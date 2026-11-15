@@ -84,6 +84,11 @@ textarea{min-height:150px}
 .empty{color:var(--muted);text-align:center;padding:24px 8px}
 .kv{display:flex;justify-content:space-between;padding:4px 0}
 .kv span:first-child{color:var(--muted)}
+.row.est{opacity:.55}
+.badge.est{background:var(--warnbg);color:var(--warn)}
+.tbtn{border:1px solid var(--acc);background:none;color:var(--acc);border-radius:10px;padding:7px 10px;font:600 13px inherit;white-space:nowrap}
+nav button{position:relative}
+.nbadge{position:absolute;top:4px;left:55%;background:var(--bad);color:#fff;border-radius:9px;font-size:11px;padding:0 5px;min-width:16px;line-height:16px}
 .tog{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:15px;margin:14px 0 2px}
 .tog input{width:22px;height:22px;margin:0;accent-color:var(--acc)}
 .chartwrap{position:relative;margin-top:6px}
@@ -133,6 +138,9 @@ textarea{min-height:150px}
     <div class="legend" id="cLegend"></div>
   </div>
   <div class="card" id="cDetail"></div>
+</main>
+<main id="v-todo">
+  <div class="card"><div class="label">To book</div><div class="sub" id="todoSum"></div><div id="todoOut"></div></div>
 </main>
 <main id="v-settings">
   <div class="card">
@@ -192,6 +200,7 @@ textarea{min-height:150px}
   <button data-v="home" class="on"><div>🏠</div>Home</button>
   <button data-v="list"><div>🧾</div>Expenses</button>
   <button data-v="chart"><div>📊</div>Daily</button>
+  <button data-v="todo"><div>✅</div>To-do<span class="nbadge" id="todoBadge" style="display:none"></span></button>
   <button data-v="settings"><div>⚙️</div>Settings</button>
 </nav>
 
@@ -209,6 +218,7 @@ textarea{min-height:150px}
   </div>
   <label class="tog"><input type="checkbox" id="fTrip"> Spread over the whole trip <span class="sub">(flights, AOW, ATM fees)</span></label>
   <div class="hint" id="fTypeHint"></div>
+  <label class="tog"><input type="checkbox" id="fEst"> Estimated — not booked yet <span class="sub">(goes on To-do)</span></label>
   <label>Note (optional)</label><input id="fNote" type="text" placeholder="e.g. Maka Hostel, tacos" autocomplete="off">
   <label>Place <span id="fGeoStat"></span></label>
   <div class="two"><input id="fCity" placeholder="City"><input id="fCountry" placeholder="Country"></div>
@@ -268,8 +278,9 @@ function calc(today){
   const usable=st.budget-cushion,maxAvg=usable/total;
   const elapsed=Math.max(0,Math.min(total,t-s+1)),last=s+elapsed-1;
   let spent=0,past=0,todaySpent=0;
+  let est=0;
   for(const x of S.expenses){
-    spent+=x.eur;
+    spent+=x.eur;if(x.estimated)est+=x.eur;
     if(x.type==='trip'){past+=elapsed?x.eur*elapsed/total:0;if(t>=s&&t<=e)todaySpent+=x.eur/total}
     else if(x.type==='period'){const[ps,pe]=spanOf(x),len=pe-ps+1;if(len<1)continue;
       const ov=Math.min(pe,last)-Math.max(ps,s)+1;if(elapsed&&ov>0)past+=x.eur*ov/len;if(t>=ps&&t<=pe)todaySpent+=x.eur/len}
@@ -279,7 +290,7 @@ function calc(today){
   const daysLeft=t<s?total:Math.max(0,e-t+1);
   const left=usable-spent;
   const fullAvg=st.budget/total,rawThr=maxAvg*(1+(st.alarmPct||0)/100),threshold=Math.min(rawThr,fullAvg),capped=rawThr>fullAvg,cushionPct=usable>0?cushion/usable*100:0;
-  return{total,cushion,usable,maxAvg,elapsed,avg,past,spent,left,leftBudget:st.budget-spent,daysLeft,perDay:daysLeft?left/daysLeft:0,
+  return{est,total,cushion,usable,maxAvg,elapsed,avg,past,spent,left,leftBudget:st.budget-spent,daysLeft,perDay:daysLeft?left/daysLeft:0,
     projected:elapsed?avg*total:spent,threshold,capped,cushionPct,todaySpent,alarm:elapsed>0&&avg>threshold,cushionHit:spent>usable,
     before:t<s,after:t>e,startsIn:s-t};
 }
@@ -373,7 +384,7 @@ function checkAlarm(){const c=calc();if(!c)return;
 
 // ---------- rendering ----------
 let view='home';
-function render(){renderBanners();renderHome();renderList();if(view==='chart')renderChart()}
+function render(){renderBanners();renderHome();renderList();renderTodo();if(view==='chart')renderChart()}
 function renderBanners(){
   const c=calc(),st=S.settings;
   $('bannerSetup').classList.toggle('on',!c);
@@ -384,7 +395,7 @@ function renderBanners(){
 }
 function row(x){
   const meta=[x.city||x.country||'',x.type==='period'?`${fmtDate(x.start,{day:'numeric',month:'short'})}–${fmtDate(x.end,{day:'numeric',month:'short'})}${nightsMode(x)?` · ${dn(x.end)-dn(x.start)||1} night${(dn(x.end)-dn(x.start))===1?'':'s'}`:''}`:fmtDate(x.date,{day:'numeric',month:'short'})].filter(Boolean).join(' · ');
-  return `<div class="row" data-id="${esc(x.id)}"><div class="em">${esc(catEmoji(x.cat))}</div><div class="grow"><b>${esc(x.note||catName(x.cat))}${x.type!=='day'?`<span class="badge">${TYPE_LABEL[x.type]}</span>`:''}</b><small>${esc(meta)}</small></div><div class="amt">${eur(x.eur)}${x.cur!=='EUR'?`<small>${esc(loc(x.amount,x.cur))}</small>`:''}</div></div>`;
+  return `<div class="row${x.estimated?' est':''}" data-id="${esc(x.id)}"><div class="em">${esc(catEmoji(x.cat))}</div><div class="grow"><b>${esc(x.note||catName(x.cat))}${x.type!=='day'?`<span class="badge">${TYPE_LABEL[x.type]}</span>`:''}${x.estimated?'<span class="badge est">Estimated</span>':''}</b><small>${esc(meta)}</small></div><div class="amt">${eur(x.eur)}${x.cur!=='EUR'?`<small>${esc(loc(x.amount,x.cur))}</small>`:''}</div></div>`;
 }
 function renderHome(){
   const c=calc(),el=$('v-home');
@@ -400,7 +411,7 @@ function renderHome(){
   <div class="grid">
     <div class="card"><div class="label">Left / day</div><div class="mid" style="color:${c.perDay<c.maxAvg?'var(--warn)':'var(--ok)'}">${eur(Math.max(0,c.perDay))}</div><div class="sub">${c.daysLeft} day${c.daysLeft===1?'':'s'} left</div></div>
     <div class="card"><div class="label">Left to spend</div><div class="mid">${eur(c.left,0)}</div><div class="sub">+ ${eur(c.cushion,0)} cushion</div></div>
-    <div class="card"><div class="label">Spent</div><div class="mid">${eur(c.spent,0)}</div><div class="sub">of ${eur(S.settings.budget,0)} budget</div></div>
+    <div class="card"><div class="label">Spent</div><div class="mid">${eur(c.spent,0)}</div><div class="sub">${c.est?`incl. ${eur(c.est,0)} estimated`:`of ${eur(S.settings.budget,0)} budget`}</div></div>
     <div class="card"><div class="label">Today</div><div class="mid">${eur(c.todaySpent)}</div><div class="sub">incl. spread costs</div></div>
   </div>
   <div class="card">
@@ -459,8 +470,8 @@ function catColor(c){const i=S.settings.cats.indexOf(c);return i>=0&&i<8?(dark()
 function dayIso(n){const d=new Date(n*864e5);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())}
 function dailyData(c){
   const s=dn(S.settings.start),e=dn(S.settings.end),days=[];
-  for(let i=0;i<c.total;i++)days.push({n:s+i,iso:dayIso(s+i),items:[],committed:0,spent:0,total:0,byCat:{}});
-  const put=(i,x,amt,kind)=>{if(i<0||i>=c.total)return;const d=days[i];d.items.push({x,amt,kind});d[kind]+=amt;d.total+=amt;d.byCat[x.cat]=(d.byCat[x.cat]||0)+amt};
+  for(let i=0;i<c.total;i++)days.push({n:s+i,iso:dayIso(s+i),items:[],committed:0,spent:0,est:0,total:0,byCat:{},byCatEst:{}});
+  const put=(i,x,amt,kind)=>{if(i<0||i>=c.total)return;const d=days[i];d.items.push({x,amt,kind});if(x.estimated){d.est+=amt;d.byCatEst[x.cat]=(d.byCatEst[x.cat]||0)+amt}else{d[kind]+=amt;d.byCat[x.cat]=(d.byCat[x.cat]||0)+amt}d.total+=amt};
   for(const x of S.expenses){
     if(x.type==='trip')for(let i=0;i<c.total;i++)put(i,x,x.eur/c.total,'committed');
     else if(x.type==='period'){const[ps,pe]=spanOf(x),len=pe-ps+1;if(len<1)continue;for(let n=ps;n<=pe;n++)put(n-s,x,x.eur/len,'committed')}
@@ -483,13 +494,14 @@ function renderChart(){
   if(tIdx>=0&&tIdx<days.length)g+=`<rect x="${tIdx*SLOT}" y="${TOP-8}" width="${SLOT}" height="${PH+8}" fill="${acc}" opacity=".10" rx="6"/>`;
   days.forEach((d,i)=>{
     const x=i*SLOT+(SLOT-BW)/2,dim=chartSel!==null&&chartSel!==i?' opacity=".45"':'';
-    const segs=chartMode==='status'?[{v:d.committed,col:ST[d.status],op:.45},{v:d.spent,col:ST[d.status],op:1}]
-      :S.settings.cats.concat(Object.keys(d.byCat).filter(k=>!S.settings.cats.includes(k))).filter(k=>d.byCat[k]).map(k=>({v:d.byCat[k],col:catColor(k),op:1}));
+    const allCats=S.settings.cats.concat(Object.keys({...d.byCat,...d.byCatEst}).filter(k=>!S.settings.cats.includes(k)));
+    const segs=chartMode==='status'?[{v:d.committed,col:ST[d.status],op:.45},{v:d.spent,col:ST[d.status],op:1},{v:d.est,col:ST[d.status],op:.18,dash:1}]
+      :allCats.filter(k=>d.byCat[k]).map(k=>({v:d.byCat[k],col:catColor(k),op:1})).concat(allCats.filter(k=>d.byCatEst[k]).map(k=>({v:d.byCatEst[k],col:catColor(k),op:.3,dash:1})));
     let base=0;const vis=segs.filter(sg=>sg.v>0);
     vis.forEach((sg,k)=>{const top=k===vis.length-1,y0=Y(base),y1=Y(base+sg.v);let h=y0-y1-(k>0?2:0);if(h<1)h=1;
       const yy=y1,r=top?4:0;
-      g+=top&&h>4?`<path d="M${x},${yy+h} V${yy+r} Q${x},${yy} ${x+r},${yy} H${x+BW-r} Q${x+BW},${yy} ${x+BW},${yy+r} V${yy+h} Z" fill="${sg.col}" fill-opacity="${sg.op}"${dim}/>`
-        :`<rect x="${x}" y="${yy}" width="${BW}" height="${h}" fill="${sg.col}" fill-opacity="${sg.op}"${dim}/>`;
+      g+=top&&h>4?`<path d="M${x},${yy+h} V${yy+r} Q${x},${yy} ${x+r},${yy} H${x+BW-r} Q${x+BW},${yy} ${x+BW},${yy+r} V${yy+h} Z" fill="${sg.col}" fill-opacity="${sg.op}"${sg.dash?` stroke="${sg.col}" stroke-width="1.2" stroke-dasharray="3 2"`:''}${dim}/>`
+        :`<rect x="${x+(sg.dash?.6:0)}" y="${yy}" width="${BW-(sg.dash?1.2:0)}" height="${h}" fill="${sg.col}" fill-opacity="${sg.op}"${sg.dash?` stroke="${sg.col}" stroke-width="1.2" stroke-dasharray="3 2"`:''}${dim}/>`;
       base+=sg.v});
     const [yy,mm,dd]=d.iso.split('-').map(Number),dt=new Date(yy,mm-1,dd),wd=dt.toLocaleDateString(undefined,{weekday:'narrow'});
     const lab=dd===1||i===0?dt.toLocaleDateString(undefined,{month:'short'}):'';
@@ -507,7 +519,7 @@ function renderChart(){
   svg.setAttribute('width',W);svg.setAttribute('height',H);svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML=g;
   y.setAttribute('width',40);y.setAttribute('height',H);y.innerHTML=ya;
   const lg=chartMode==='status'
-    ?`<span><i style="background:${ST.good}"></i>${ST_LABEL.good}</span><span><i style="background:${ST.over}"></i>${ST_LABEL.over}</span><span><i style="background:${ST.alarm}"></i>${ST_LABEL.alarm}</span><span><i style="background:${muted};opacity:.45"></i>Committed (spread)</span><span><i style="background:${muted}"></i>Spent that day</span>`
+    ?`<span><i style="background:${ST.good}"></i>${ST_LABEL.good}</span><span><i style="background:${ST.over}"></i>${ST_LABEL.over}</span><span><i style="background:${ST.alarm}"></i>${ST_LABEL.alarm}</span><span><i style="background:${muted};opacity:.45"></i>Committed (spread)</span><span><i style="background:${muted}"></i>Spent that day</span><span><i style="background:transparent;border:1.5px dashed ${muted}"></i>Estimated</span>`
     :S.settings.cats.map(k=>`<span><i style="background:${catColor(k)}"></i>${esc(catName(k))}</span>`).join('');
   $('cLegend').innerHTML=lg+`<span><i class="ln" style="border-color:${ink};border-top-style:dashed"></i>Max ${eur(c.maxAvg)}</span><span><i class="ln" style="border-color:${ST.alarm};border-top-style:dotted"></i>Alarm ${eur(c.threshold)}</span><span><i class="ln" style="border-color:${acc}"></i>Running avg</span>`;
   if(!chartScrolled){chartScrolled=true;const sc=$('cScroll');const target=Math.max(0,Math.min(days.length-1,tIdx<0?0:tIdx));requestAnimationFrame(()=>{sc.scrollLeft=Math.max(0,target*SLOT-sc.clientWidth/2+SLOT/2)})}
@@ -517,10 +529,10 @@ function renderDayDetail(days,c,i){
   const d=days[i];if(!d){$('cDetail').innerHTML='';return}
   const room=c.maxAvg-d.total,agg=new Map();
   d.items.forEach(({x,amt,kind})=>{const o=agg.get(x.id)||{x,amt:0,kind};o.amt+=amt;agg.set(x.id,o)});
-  const rows=[...agg.values()].sort((a,b)=>b.amt-a.amt).map(({x,amt,kind})=>`<div class="row" data-id="${esc(x.id)}"><div class="em">${esc(catEmoji(x.cat))}</div><div class="grow"><b>${esc(x.note||catName(x.cat))}</b><small>${kind==='committed'?(x.type==='trip'?'Whole trip, spread':'Spread '+fmtDate(x.start,{day:'numeric',month:'short'})+'–'+fmtDate(x.end,{day:'numeric',month:'short'})):'Spent this day'}${kind==='committed'?' · total '+eur(x.eur,0):''}</small></div><div class="amt">${eur(amt)}</div></div>`).join('');
+  const rows=[...agg.values()].sort((a,b)=>b.amt-a.amt).map(({x,amt,kind})=>`<div class="row${x.estimated?' est':''}" data-id="${esc(x.id)}"><div class="em">${esc(catEmoji(x.cat))}</div><div class="grow"><b>${esc(x.note||catName(x.cat))}</b><small>${kind==='committed'?(x.type==='trip'?'Whole trip, spread':'Spread '+fmtDate(x.start,{day:'numeric',month:'short'})+'–'+fmtDate(x.end,{day:'numeric',month:'short'})):'Spent this day'}${kind==='committed'?' · total '+eur(x.eur,0):''}</small></div><div class="amt">${eur(amt)}</div></div>`).join('');
   $('cDetail').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><b>${fmtDate(d.iso,{weekday:'long',day:'numeric',month:'long'})}</b><span class="dstat" style="color:${ST[d.status]}">${ST_LABEL[d.status]}</span></div>
    <div class="grid" style="margin-top:10px">
-    <div><div class="label">Committed</div><div class="mid">${eur(d.committed)}</div></div>
+    <div><div class="label">Committed</div><div class="mid">${eur(d.committed)}</div>${d.est?`<div class="sub">+ ${eur(d.est)} estimated</div>`:''}</div>
     <div><div class="label">Spent that day</div><div class="mid">${eur(d.spent)}</div></div>
     <div><div class="label">Day total</div><div class="mid">${eur(d.total)}</div></div>
     <div><div class="label">${room>=0?'Left before max':'Over max by'}</div><div class="mid" style="color:${room>=0?'var(--ok)':ST[d.status]}">${eur(Math.abs(room))}</div></div>
@@ -533,6 +545,19 @@ $('cPrev').onclick=()=>$('cScroll').scrollBy({left:-7*34,behavior:'smooth'});
 $('cNext').onclick=()=>$('cScroll').scrollBy({left:7*34,behavior:'smooth'});
 $('cToday').onclick=()=>{chartSel=null;chartScrolled=false;renderChart()};
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(view==='chart')renderChart()});
+
+// ---------- to-do ----------
+function renderTodo(){
+  const items=S.expenses.filter(x=>x.estimated).sort((a,b)=>keyDate(a).localeCompare(keyDate(b)));
+  const b=$('todoBadge');b.textContent=items.length;b.style.display=items.length?'':'none';
+  const sum=items.reduce((t,x)=>t+x.eur,0);
+  $('todoSum').textContent=items.length?`${items.length} to book · ${eur(sum,0)} estimated`:'';
+  $('todoOut').innerHTML=items.length?items.map(x=>{const r=row(x).replace(' est"','"').replace(/<div class="amt">/,'<div class="amt">');
+    return `<div style="display:flex;align-items:center;gap:8px"><div class="grow">${r}</div><button class="tbtn" data-book="${esc(x.id)}">✓ Booked</button></div>`}).join('')
+    :'<div class="empty">Nothing to book 🎉<br>Mark an expense as "Estimated" to add it here.</div>';
+}
+$('todoOut').addEventListener('click',e=>{const bt=e.target.closest('[data-book]');if(!bt)return;e.stopPropagation();
+  const x=S.expenses.find(y=>y.id===bt.dataset.book);if(!x)return;x.estimated=false;x.updated=Date.now();save();render();toast('Marked as booked — tap it in Expenses to fix the final price')});
 
 // ---------- navigation ----------
 function go(v){view=v;document.querySelectorAll('main').forEach(m=>m.classList.toggle('on',m.id==='v-'+v));
@@ -565,7 +590,7 @@ function openSheet(x){
   $('fTitle').textContent=x?'Edit expense':'Add expense';$('fDel').style.display=x?'':'none';$('fErr').textContent='';
   fillCurrencies(x?x.cur:S.lastCur);
   $('fAmt').value=x?x.amount:'';$('fNote').value=x?x.note||'':'';
-  const t=todayStr();$('fFrom').value=x?(x.type==='period'?x.start:x.date):t;$('fTo').value=x?(x.type==='period'?x.end:x.date):t;$('fTrip').checked=!!x&&x.type==='trip';
+  const t=todayStr();$('fFrom').value=x?(x.type==='period'?x.start:x.date):t;$('fTo').value=x?(x.type==='period'?x.end:x.date):t;$('fTrip').checked=!!x&&x.type==='trip';$('fEst').checked=!!(x&&x.estimated);
   $('fCats').innerHTML=S.settings.cats.map(c=>`<button class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('');
   [...$('fCats').children].forEach(b=>b.onclick=()=>setCat(b.dataset.c));
   setCat(x&&S.settings.cats.includes(x.cat)?x.cat:(x?x.cat:S.settings.cats[0]));
@@ -607,7 +632,7 @@ $('fSave').onclick=()=>{
   if(!r)return err(`No exchange rate for ${cur}. Connect to the internet or set one in Settings.`);
   const x={id:F.editId||uid(),amount,cur,rate:r,eur:Math.round(amount/r*100)/100,cat:F.cat,type:curType(),
     date:$('fFrom').value||todayStr(),note:$('fNote').value.trim(),city:$('fCity').value.trim(),country:$('fCountry').value.trim(),
-    cc:F.countryTouched?'':F.cc||'',lat:F.lat,lon:F.lon,created:old?old.created:Date.now(),updated:Date.now()};
+    estimated:$('fEst').checked,cc:F.countryTouched?'':F.cc||'',lat:F.lat,lon:F.lon,created:old?old.created:Date.now(),updated:Date.now()};
   if(x.type==='period'){x.start=$('fFrom').value;x.end=$('fTo').value;if(x.end<x.start)return err('End date is before start date.');x.checkout=isAcc(x.cat);x.date=x.start}
   else{delete x.start;delete x.end}
   if(old){delete old.start;delete old.end;delete old.checkout}
