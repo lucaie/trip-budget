@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trip Budget">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>Trip Budget</title>
+<style>
+:root{--bg:#f4f6f5;--card:#fff;--ink:#14201d;--muted:#66736f;--line:#e2e7e5;--acc:#0f766e;--acc2:#ccfbf1;--warn:#b45309;--warnbg:#fef3c7;--bad:#b91c1c;--badbg:#fee2e2;--ok:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1413;--card:#17201e;--ink:#e8efed;--muted:#93a29e;--line:#26322f;--acc:#2dd4bf;--acc2:#134e4a;--warn:#fbbf24;--warnbg:#3a2a06;--bad:#f87171;--badbg:#3b1010;--ok:#4ade80}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))}
+header{padding:14px 16px 6px;display:flex;align-items:center;justify-content:space-between}
+header h1{font-size:20px;margin:0}
+header small{color:var(--muted)}
+main{padding:0 12px 20px;display:none}
+main.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0}
+.banner{border-radius:14px;padding:12px 14px;margin:10px 12px 0;font-weight:600;display:none}
+.banner.on{display:block}
+.banner.bad{background:var(--badbg);color:var(--bad)}
+.banner.warn{background:var(--warnbg);color:var(--warn)}
+.banner.info{background:var(--acc2);color:var(--acc)}
+.label{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.04em}
+.big{font-size:38px;font-weight:750;letter-spacing:-.02em;line-height:1.1}
+.big small{font-size:16px;color:var(--muted);font-weight:500}
+.bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:10px;position:relative}
+.bar i{display:block;height:100%;background:var(--acc);border-radius:6px}
+.bar.warn i{background:var(--warn)}.bar.bad i{background:var(--bad)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid .card{margin:0}
+.mid{font-size:22px;font-weight:700}
+.sub{color:var(--muted);font-size:13px}
+.row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-top:1px solid var(--line);cursor:pointer}
+.row:first-child{border-top:0}
+.em{font-size:22px;width:30px;text-align:center}
+.grow{flex:1;min-width:0}
+.grow b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.amt{text-align:right;font-weight:700;white-space:nowrap}
+.amt small,.grow small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+.ghead{display:flex;justify-content:space-between;font-weight:700;padding:4px 2px 6px}
+.ghead span{color:var(--muted);font-weight:600}
+.badge{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--acc2);color:var(--acc);margin-left:4px}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
+nav button{flex:1;border:0;background:none;color:var(--muted);font:600 13px inherit;padding:10px 0 12px}
+nav button.on{color:var(--acc)}
+nav button div{font-size:20px}
+#fab{position:fixed;right:18px;bottom:calc(82px + env(safe-area-inset-bottom));width:62px;height:62px;border-radius:31px;border:0;background:var(--acc);color:#fff;font-size:34px;box-shadow:0 6px 18px rgba(0,0,0,.25);z-index:6}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:10;align-items:flex-end}
+.sheet.on{display:flex}
+.panel{background:var(--card);width:100%;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))}
+.panel h2{margin:0 0 10px;font-size:18px;display:flex;justify-content:space-between}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+textarea{min-height:150px}
+.amtrow{display:flex;gap:8px}
+.amtrow input{font-size:28px;font-weight:700;flex:1}
+.amtrow select{width:100px;font-size:18px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:20px;padding:7px 11px;font:inherit;font-size:14px}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;border:0;background:var(--bg);color:var(--ink);font:inherit;font-size:14px;padding:9px 4px}
+.seg button.on{background:var(--acc);color:#fff}
+.two{display:flex;gap:8px}.two>*{flex:1}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:14px;font:700 17px inherit;background:var(--acc);color:#fff;margin-top:16px}
+.btn.sec{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:600;font-size:15px;padding:11px;margin-top:8px}
+.btn.del{background:none;color:var(--bad);border:1px solid var(--bad);font-size:15px;padding:11px;margin-top:8px}
+.x{border:0;background:none;color:var(--muted);font-size:22px}
+.hint{color:var(--muted);font-size:13px;margin-top:4px}
+.err{color:var(--bad);font-size:14px;margin-top:8px;min-height:1em}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast.on{opacity:1}
+.ctl{display:flex;gap:8px;margin:10px 0}
+.ctl select{flex:1}
+.empty{color:var(--muted);text-align:center;padding:24px 8px}
+.kv{display:flex;justify-content:space-between;padding:4px 0}
+.kv span:first-child{color:var(--muted)}
+</style>
+</head>
+<body>
+<header><div><h1>Trip Budget</h1><small id="hdrsub"></small></div></header>
+<div id="bannerAlarm" class="banner bad"></div>
+<div id="bannerCushion" class="banner warn"></div>
+<div id="bannerSetup" class="banner info">Start by setting your budget and trip dates in Settings.</div>
+
+<main id="v-home" class="on"></main>
+<main id="v-list">
+  <div class="ctl">
+    <select id="groupBy">
+      <option value="date">Group: Date</option>
+      <option value="cat">Group: Category</option>
+      <option value="city">Group: Place</option>
+      <option value="country">Group: Country</option>
+      <option value="type">Group: Type</option>
+    </select>
+    <select id="sortBy">
+      <option value="new">Sort: Newest</option>
+      <option value="big">Sort: Largest</option>
+    </select>
+  </div>
+  <div id="listOut"></div>
+</main>
+<main id="v-settings">
+  <div class="card">
+    <div class="label">Budget</div>
+    <label>Total trip budget (€)</label><input id="sBudget" type="number" inputmode="decimal" min="0" step="1">
+    <div class="two">
+      <div><label>Start date</label><input id="sStart" type="date"></div>
+      <div><label>Return date</label><input id="sEnd" type="date"></div>
+    </div>
+    <div class="hint" id="sDays"></div>
+    <label>Safety cushion (kept out of the daily max)</label>
+    <div class="seg" id="sCushMode"><button data-v="eur">Fixed €</button><button data-v="pct">% of budget</button></div>
+    <input id="sCushVal" type="number" inputmode="decimal" min="0" step="1" style="margin-top:8px">
+    <div class="hint" id="sCushHint"></div>
+    <label>Alarm when daily average is above max by (%)</label><input id="sAlarm" type="number" inputmode="decimal" min="0" step="1">
+    <div class="hint" id="sAlarmHint"></div>
+    <button class="btn sec" id="sNotify"></button>
+    <div class="hint">The red banner always shows. Notifications are extra; on iPhone they only work after "Add to Home Screen".</div>
+  </div>
+  <div class="card">
+    <div class="label">Categories</div>
+    <label>One per line, emoji first</label><textarea id="sCats"></textarea>
+    <div class="hint">Categories containing "ATM" default to whole-trip.</div>
+  </div>
+  <div class="card">
+    <div class="label">Exchange rates (units per €1)</div>
+    <div class="hint" id="rStatus"></div>
+    <div id="rList"></div>
+    <button class="btn sec" id="rRefresh">Refresh live rates</button>
+    <div class="hint">Type a number to override the live rate; leave empty to use live.</div>
+  </div>
+  <div class="card">
+    <div class="label">Data (stored only on this phone)</div>
+    <button class="btn sec" id="dJson">Export backup (JSON)</button>
+    <button class="btn sec" id="dCsv">Export spreadsheet (CSV)</button>
+    <button class="btn sec" id="dImport">Import backup</button>
+    <input type="file" id="dFile" accept="application/json,.json" hidden>
+    <button class="btn del" id="dReset">Delete all data</button>
+  </div>
+</main>
+
+<button id="fab" aria-label="Add expense">+</button>
+<nav>
+  <button data-v="home" class="on"><div>🏠</div>Home</button>
+  <button data-v="list"><div>🧾</div>Expenses</button>
+  <button data-v="settings"><div>⚙️</div>Settings</button>
+</nav>
+
+<div class="sheet" id="sheet"><div class="panel">
+  <h2><span id="fTitle">Add expense</span><button class="x" id="fClose">✕</button></h2>
+  <div class="amtrow">
+    <input id="fAmt" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+    <select id="fCur"></select>
+  </div>
+  <div class="hint" id="fEur"></div>
+  <label>Category</label><div class="chips" id="fCats"></div>
+  <label>Type</label>
+  <div class="seg" id="fType"><button data-v="day">Day</button><button data-v="period">Period</button><button data-v="trip">Whole trip</button></div>
+  <div class="hint" id="fTypeHint"></div>
+  <div id="fDayBox"><label>Date</label><input id="fDate" type="date"></div>
+  <div id="fPerBox" class="two" style="display:none">
+    <div><label>From</label><input id="fFrom" type="date"></div>
+    <div><label>To (incl.)</label><input id="fTo" type="date"></div>
+  </div>
+  <label>Note (optional)</label><input id="fNote" type="text" placeholder="e.g. Maka Hostel, tacos" autocomplete="off">
+  <label>Place <span id="fGeoStat"></span></label>
+  <div class="two"><input id="fCity" placeholder="City"><input id="fCountry" placeholder="Country"></div>
+  <div class="err" id="fErr"></div>
+  <button class="btn" id="fSave">Save</button>
+  <button class="btn del" id="fDel" style="display:none">Delete expense</button>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const KEY='tripbudget_v1';
+const DEFAULT_CATS=['🛏️ Accommodation','🚌 Transport','✈️ Flights','🌮 Food','🎟️ Activities','🤿 Diving','🛍️ Shopping','🏧 ATM fees','📦 Other'];
+const CC2CUR={MX:'MXN',CO:'COP',US:'USD',DK:'DKK',GB:'GBP',CA:'CAD',GT:'GTQ',BZ:'BZD',PA:'USD',EC:'USD',SV:'USD',PE:'PEN',CR:'CRC',CU:'CUP',IT:'EUR',ES:'EUR',FR:'EUR',DE:'EUR',PT:'EUR',NL:'EUR',AT:'EUR',BE:'EUR',IE:'EUR'};
+const CURS=['EUR','USD','MXN','COP','DKK','GBP','GTQ','BZD','PEN','CRC','CAD'];
+const TYPE_LABEL={day:'Day',period:'Period',trip:'Whole trip'};
+const $=id=>document.getElementById(id);
+
+function blank(){return{settings:{budget:0,start:'',end:'',cushionMode:'eur',cushionValue:0,alarmPct:10,notify:false,cats:DEFAULT_CATS.slice()},expenses:[],rates:{ts:0,rates:{},manual:{}},geo:{cache:{},last:null},lastCur:'EUR',lastNotified:''}}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.settings){const b=blank();return{...b,...s,settings:{...b.settings,...s.settings},rates:{...b.rates,...s.rates},geo:{...b.geo,...s.geo},expenses:Array.isArray(s.expenses)?s.expenses:[]}}}catch(e){}return blank()}
+let S=load();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('⚠️ Could not save on this device')}}
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+
+// ---------- helpers ----------
+const pad=n=>String(n).padStart(2,'0');
+function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function dn(s){const[y,m,d]=s.split('-').map(Number);return Math.round(Date.UTC(y,m-1,d)/864e5)}
+function fmtDate(s,opt){if(!s)return'';const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString(undefined,opt||{weekday:'short',day:'numeric',month:'short'})}
+function eur(n,dec=2){if(n==null||isNaN(n))return'—';return(n<0?'−':'')+'€'+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:dec,maximumFractionDigits:dec})}
+function loc(n,c){return Number(n).toLocaleString(undefined,{maximumFractionDigits:2})+' '+c}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function catEmoji(c){const p=String(c).split(' ');return /\p{Extended_Pictographic}/u.test(p[0])?p[0]:'•'}
+function catName(c){const p=String(c).split(' ');return /\p{Extended_Pictographic}/u.test(p[0])?p.slice(1).join(' '):c}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
+
+// ---------- budget math ----------
+function calc(today){
+  today=today||todayStr();
+  const st=S.settings;
+  if(!st.start||!st.end||!(st.budget>0))return null;
+  const s=dn(st.start),e=dn(st.end),t=dn(today),total=e-s+1;
+  if(total<1)return null;
+  const cushion=st.cushionMode==='pct'?st.budget*(st.cushionValue||0)/100:(st.cushionValue||0);
+  const usable=st.budget-cushion,maxAvg=usable/total;
+  const elapsed=Math.max(0,Math.min(total,t-s+1)),last=s+elapsed-1;
+  let spent=0,past=0,todaySpent=0;
+  for(const x of S.expenses){
+    spent+=x.eur;
+    if(x.type==='trip'){past+=elapsed?x.eur*elapsed/total:0;if(t>=s&&t<=e)todaySpent+=x.eur/total}
+    else if(x.type==='period'){const ps=dn(x.start),pe=dn(x.end),len=pe-ps+1;if(len<1)continue;
+      const ov=Math.min(pe,last)-Math.max(ps,s)+1;if(elapsed&&ov>0)past+=x.eur*ov/len;if(t>=ps&&t<=pe)todaySpent+=x.eur/len}
+    else{if(elapsed&&Math.max(dn(x.date),s)<=last)past+=x.eur;if(x.date===today)todaySpent+=x.eur}
+  }
+  const avg=elapsed?past/elapsed:0;
+  const daysLeft=t<s?total:Math.max(0,e-t+1);
+  const left=usable-spent;
+  const fullAvg=st.budget/total,rawThr=maxAvg*(1+(st.alarmPct||0)/100),threshold=Math.min(rawThr,fullAvg),capped=rawThr>fullAvg,cushionPct=usable>0?cushion/usable*100:0;
+  return{total,cushion,usable,maxAvg,elapsed,avg,past,spent,left,leftBudget:st.budget-spent,daysLeft,perDay:daysLeft?left/daysLeft:0,
+    projected:elapsed?avg*total:spent,threshold,capped,cushionPct,todaySpent,alarm:elapsed>0&&avg>threshold,cushionHit:spent>usable,
+    before:t<s,after:t>e,startsIn:s-t};
+}
+
+// ---------- rates ----------
+function rate(cur){if(cur==='EUR')return 1;const m=parseFloat(S.rates.manual[cur]);return m>0?m:(S.rates.rates[cur]||null)}
+function toEur(a,c){const r=rate(c);return r?a/r:null}
+async function refreshRates(force){
+  if(!force&&Date.now()-S.rates.ts<6*3600e3)return;
+  try{const r=await fetch('https://open.er-api.com/v6/latest/EUR',{cache:'no-store'});const j=await r.json();
+    if(j&&j.result==='success'&&j.rates){S.rates.rates=j.rates;S.rates.ts=Date.now();save();renderSettings();updateEurPreview();if(force)toast('Rates updated')}
+  }catch(e){if(force)toast('Offline — using saved rates')}
+}
+
+// ---------- location ----------
+function locate(){return new Promise(res=>{if(!navigator.geolocation)return res(null);
+  navigator.geolocation.getCurrentPosition(p=>res({lat:+p.coords.latitude.toFixed(5),lon:+p.coords.longitude.toFixed(5)}),()=>res(null),{enableHighAccuracy:false,timeout:12000,maximumAge:600000})})}
+async function reverse(lat,lon){
+  const k=lat.toFixed(2)+','+lon.toFixed(2);if(S.geo.cache[k])return S.geo.cache[k];
+  try{const r=await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude='+lat+'&longitude='+lon+'&localityLanguage=en');const j=await r.json();
+    const g={city:j.city||j.locality||j.principalSubdivision||'',country:(j.countryName||'').replace(/\s*\(the\)$/,''),cc:j.countryCode||''};
+    if(g.country){S.geo.cache[k]=g;S.geo.last=g;save()}return g.country?g:null}catch(e){return null}
+}
+async function resolvePending(){let ch=false;
+  for(const x of S.expenses){if(x.lat!=null&&!x.country){const g=await reverse(x.lat,x.lon);if(g){x.city=x.city||g.city;x.country=g.country;x.cc=g.cc;ch=true}}}
+  if(ch){save();render()}}
+
+// ---------- notifications ----------
+async function notify(title,body){
+  if(!S.settings.notify||!('Notification'in window)||Notification.permission!=='granted')return;
+  try{const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();
+    if(reg)await reg.showNotification(title,{body,icon:'icon-192.png',badge:'icon-192.png',tag:'tripbudget'});else new Notification(title,{body,icon:'icon-192.png'})}catch(e){}
+}
+function checkAlarm(){const c=calc();if(!c)return;
+  const key=todayStr()+(c.alarm?'A':'')+(c.cushionHit?'C':'');
+  if((c.alarm||c.cushionHit)&&S.lastNotified!==key){
+    S.lastNotified=key;save();
+    if(c.alarm)notify('Daily average too high',`Avg ${eur(c.avg)}/day vs max ${eur(c.maxAvg)} (+${Math.round((c.avg/c.maxAvg-1)*100)}%). Left: ${eur(c.perDay)}/day.`);
+    else notify('Using your safety cushion',`You've spent ${eur(c.spent,0)} of ${eur(c.usable,0)} usable.`);
+  }}
+
+// ---------- rendering ----------
+let view='home';
+function render(){renderBanners();renderHome();renderList();}
+function renderBanners(){
+  const c=calc(),st=S.settings;
+  $('bannerSetup').classList.toggle('on',!c);
+  const a=$('bannerAlarm'),cu=$('bannerCushion');
+  if(c&&c.alarm){a.textContent=`⚠️ Daily average ${eur(c.avg)} is ${Math.round((c.avg/c.maxAvg-1)*100)}% above your max ${eur(c.maxAvg)} (alarm at +${Math.round((c.threshold/c.maxAvg-1)*1000)/10}%). Aim for ${eur(Math.max(0,c.perDay))}/day from today.`;a.classList.add('on')}else a.classList.remove('on');
+  if(c&&c.cushionHit){cu.textContent=`🛟 You're into your safety cushion: ${eur(-c.left,0)} of ${eur(c.cushion,0)} used.`;cu.classList.add('on')}else cu.classList.remove('on');
+  $('hdrsub').textContent=c?(c.before?`Starts in ${c.startsIn} day${c.startsIn===1?'':'s'}`:c.after?'Trip finished':`Day ${c.elapsed} of ${c.total}`):'';
+}
+function row(x){
+  const meta=[x.city||x.country||'',x.type==='period'?`${fmtDate(x.start,{day:'numeric',month:'short'})}–${fmtDate(x.end,{day:'numeric',month:'short'})}`:fmtDate(x.date,{day:'numeric',month:'short'})].filter(Boolean).join(' · ');
+  return `<div class="row" data-id="${esc(x.id)}"><div class="em">${esc(catEmoji(x.cat))}</div><div class="grow"><b>${esc(x.note||catName(x.cat))}${x.type!=='day'?`<span class="badge">${TYPE_LABEL[x.type]}</span>`:''}</b><small>${esc(meta)}</small></div><div class="amt">${eur(x.eur)}${x.cur!=='EUR'?`<small>${esc(loc(x.amount,x.cur))}</small>`:''}</div></div>`;
+}
+function renderHome(){
+  const c=calc(),el=$('v-home');
+  if(!c){el.innerHTML=`<div class="card empty">No budget yet.<br><br><button class="btn" onclick="go('settings')">Set up budget</button></div>`;return}
+  const ratio=c.maxAvg>0?c.avg/c.maxAvg:0,cls=c.alarm?'bad':ratio>1?'warn':'';
+  const recent=S.expenses.slice().sort(sortNew).slice(0,6);
+  el.innerHTML=`
+  <div class="card"><div class="label">Daily average</div>
+    <div class="big">${c.elapsed?eur(c.avg):'—'} <small>/ max ${eur(c.maxAvg)}</small></div>
+    <div class="bar ${cls}"><i style="width:${Math.min(100,ratio*100)}%"></i></div>
+    <div class="sub" style="margin-top:6px">${c.elapsed?`Over ${c.elapsed} day${c.elapsed===1?'':'s'} · alarm above ${eur(c.threshold)}${c.capped?' (capped at cushion)':''}`:`Starts counting on ${fmtDate(S.settings.start)}`}</div>
+  </div>
+  <div class="grid">
+    <div class="card"><div class="label">Left / day</div><div class="mid" style="color:${c.perDay<c.maxAvg?'var(--warn)':'var(--ok)'}">${eur(Math.max(0,c.perDay))}</div><div class="sub">${c.daysLeft} day${c.daysLeft===1?'':'s'} left</div></div>
+    <div class="card"><div class="label">Left to spend</div><div class="mid">${eur(c.left,0)}</div><div class="sub">+ ${eur(c.cushion,0)} cushion</div></div>
+    <div class="card"><div class="label">Spent</div><div class="mid">${eur(c.spent,0)}</div><div class="sub">of ${eur(S.settings.budget,0)} budget</div></div>
+    <div class="card"><div class="label">Today</div><div class="mid">${eur(c.todaySpent)}</div><div class="sub">incl. spread costs</div></div>
+  </div>
+  <div class="card">
+    <div class="kv"><span>At this pace, trip total</span><b style="color:${c.projected>c.usable?'var(--bad)':'var(--ok)'}">${eur(c.projected,0)}</b></div>
+    <div class="kv"><span>Usable budget (excl. cushion)</span><b>${eur(c.usable,0)}</b></div>
+    <div class="kv"><span>Trip length</span><b>${c.total} days</b></div>
+  </div>
+  <div class="card"><div class="label" style="margin-bottom:4px">Recent</div>${recent.length?recent.map(row).join(''):'<div class="empty">No expenses yet. Tap + to add one.</div>'}</div>`;
+}
+const sortNew=(a,b)=>(keyDate(b)).localeCompare(keyDate(a))||b.created-a.created;
+function keyDate(x){return x.type==='period'?x.start:x.date}
+function renderList(){
+  const g=$('groupBy').value,so=$('sortBy').value,out=$('listOut');
+  if(!S.expenses.length){out.innerHTML='<div class="card empty">No expenses yet.</div>';return}
+  const groups=new Map();
+  for(const x of S.expenses){
+    const k=g==='date'?keyDate(x):g==='cat'?x.cat:g==='city'?(x.city||'Unknown place'):g==='country'?(x.country||'Unknown country'):TYPE_LABEL[x.type];
+    if(!groups.has(k))groups.set(k,[]);groups.get(k).push(x);
+  }
+  let arr=[...groups.entries()].map(([k,v])=>({k,v,sum:v.reduce((s,x)=>s+x.eur,0)}));
+  if(g==='date')arr.sort((a,b)=>b.k.localeCompare(a.k));else arr.sort((a,b)=>b.sum-a.sum);
+  const total=S.expenses.reduce((s,x)=>s+x.eur,0);
+  out.innerHTML=`<div class="sub" style="padding:0 4px">${S.expenses.length} expenses · ${eur(total)}</div>`+arr.map(({k,v,sum})=>{
+    v.sort(so==='big'?(a,b)=>b.eur-a.eur:sortNew);
+    const label=g==='date'?fmtDate(k):g==='cat'?`${catEmoji(k)} ${catName(k)}`:k;
+    return `<div class="card"><div class="ghead">${esc(label)}<span>${eur(sum)}</span></div>${v.map(row).join('')}</div>`}).join('');
+}
+function renderSettings(){
+  const st=S.settings;
+  if(document.activeElement!==$('sBudget'))$('sBudget').value=st.budget||'';
+  $('sStart').value=st.start;$('sEnd').value=st.end;
+  if(document.activeElement!==$('sCushVal'))$('sCushVal').value=st.cushionValue||'';
+  if(document.activeElement!==$('sAlarm'))$('sAlarm').value=st.alarmPct;
+  if(document.activeElement!==$('sCats'))$('sCats').value=st.cats.join('\n');
+  [...$('sCushMode').children].forEach(b=>b.classList.toggle('on',b.dataset.v===st.cushionMode));
+  const c=calc();
+  $('sDays').textContent=c?`${c.total} days · max ${eur(c.maxAvg)}/day`:'';
+  $('sAlarmHint').textContent=c?(c.capped?`Your cushion only covers +${c.cushionPct.toFixed(1)}%, so the alarm fires at ${eur(c.threshold)}/day (the whole budget incl. cushion).`:`Fires above ${eur(c.threshold)}/day. Cushion covers up to +${c.cushionPct.toFixed(1)}%.`):'';
+  $('sCushHint').textContent=st.cushionMode==='pct'?`${st.cushionValue||0}% = ${eur(st.budget*(st.cushionValue||0)/100,0)}`:'Amount in €';
+  const perm=('Notification'in window)?Notification.permission:'unsupported';
+  $('sNotify').textContent=perm==='unsupported'?'🔕 Notifications not supported here':st.notify&&perm==='granted'?'🔔 Notifications on (tap to turn off)':'🔕 Turn on notifications';
+  $('rStatus').textContent=S.rates.ts?`Live rates from ${new Date(S.rates.ts).toLocaleString()}`:'No live rates yet (needs internet).';
+  const used=new Set(CURS);S.expenses.forEach(x=>used.add(x.cur));
+  $('rList').innerHTML=[...used].filter(c=>c!=='EUR').map(c=>`<div class="kv" style="align-items:center;gap:8px"><span style="width:50px">${c}</span><input data-cur="${c}" type="number" inputmode="decimal" step="any" placeholder="${S.rates.rates[c]?(+S.rates.rates[c].toPrecision(6)):'no rate'}" value="${S.rates.manual[c]||''}" style="flex:1"></div>`).join('');
+}
+
+// ---------- navigation ----------
+function go(v){view=v;document.querySelectorAll('main').forEach(m=>m.classList.toggle('on',m.id==='v-'+v));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  $('fab').style.display=v==='settings'?'none':'';if(v==='settings')renderSettings();window.scrollTo(0,0)}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+$('groupBy').onchange=$('sortBy').onchange=renderList;
+
+// ---------- expense form ----------
+let F={};
+function fillCurrencies(sel){const set=new Set(CURS);Object.keys(S.rates.rates||{}).forEach(c=>set.add(c));
+  $('fCur').innerHTML=[...set].map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join('')}
+function setType(t){F.type=t;[...$('fType').children].forEach(b=>b.classList.toggle('on',b.dataset.v===t));
+  $('fDayBox').style.display=t==='period'?'none':'';$('fPerBox').style.display=t==='period'?'flex':'none';
+  $('fTypeHint').textContent=t==='day'?'Counts on this date.':t==='period'?'Spread evenly over these dates (e.g. 4-night hostel).':'Spread over the whole trip (e.g. flights, AOW, ATM fees).';
+  $('fDayBox').querySelector('label').textContent=t==='trip'?'Date paid':'Date';}
+function setCat(c){F.cat=c;[...$('fCats').children].forEach(b=>b.classList.toggle('on',b.dataset.c===c));
+  if(!F.typeTouched&&!F.editId)setType(/atm/i.test(c)?'trip':'day')}
+function updateEurPreview(){if(!$('sheet').classList.contains('on'))return;const a=parseFloat(($('fAmt').value||'').replace(',','.')),c=$('fCur').value;
+  if(!(a>0)){$('fEur').textContent=c==='EUR'?'':(rate(c)?`1 € = ${loc(rate(c),c)}`:`No rate for ${c} — set one in Settings`);return}
+  const e=toEur(a,c);$('fEur').textContent=c==='EUR'?'':e!=null?`≈ ${eur(e)}`:`No rate for ${c} — set one in Settings`}
+function openSheet(x){
+  F={editId:x?x.id:null,typeTouched:!!x,curTouched:!!x,lat:x?x.lat:null,lon:x?x.lon:null,cc:x?x.cc:''};
+  $('fTitle').textContent=x?'Edit expense':'Add expense';$('fDel').style.display=x?'':'none';$('fErr').textContent='';
+  fillCurrencies(x?x.cur:S.lastCur);
+  $('fAmt').value=x?x.amount:'';$('fNote').value=x?x.note||'':'';
+  const t=todayStr();$('fDate').value=x?x.date:t;$('fFrom').value=x&&x.start||t;$('fTo').value=x&&x.end||t;
+  $('fCats').innerHTML=S.settings.cats.map(c=>`<button class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('');
+  [...$('fCats').children].forEach(b=>b.onclick=()=>setCat(b.dataset.c));
+  setType(x?x.type:'day');setCat(x&&S.settings.cats.includes(x.cat)?x.cat:(x?x.cat:S.settings.cats[0]));
+  const last=S.geo.last||{};
+  $('fCity').value=x?x.city||'':last.city||'';$('fCountry').value=x?x.country||'':last.country||'';
+  $('fGeoStat').textContent='';
+  $('sheet').classList.add('on');updateEurPreview();
+  if(!x){setTimeout(()=>$('fAmt').focus(),50);autoLocate()}
+}
+async function autoLocate(){
+  $('fGeoStat').textContent='· 📍 locating…';
+  const p=await locate();if(!$('sheet').classList.contains('on')||F.editId)return;
+  if(!p){$('fGeoStat').textContent='· 📍 no GPS, using last place';return}
+  F.lat=p.lat;F.lon=p.lon;
+  const g=await reverse(p.lat,p.lon);if(!$('sheet').classList.contains('on'))return;
+  if(g){if(!F.cityTouched)$('fCity').value=g.city;if(!F.countryTouched)$('fCountry').value=g.country;F.cc=g.cc;$('fGeoStat').textContent='· 📍 from GPS';
+    const cur=CC2CUR[g.cc];if(cur&&!F.curTouched){fillCurrencies(cur);updateEurPreview()}}
+  else{$('fGeoStat').textContent='· 📍 saved GPS, name fills in when online';if(!F.cityTouched)$('fCity').value='';if(!F.countryTouched)$('fCountry').value=''}
+}
+function closeSheet(){$('sheet').classList.remove('on')}
+$('fab').onclick=()=>openSheet(null);
+$('fClose').onclick=closeSheet;
+$('sheet').onclick=e=>{if(e.target===$('sheet'))closeSheet()};
+[...$('fType').children].forEach(b=>b.onclick=()=>{F.typeTouched=true;setType(b.dataset.v)});
+$('fAmt').oninput=updateEurPreview;
+$('fCur').onchange=()=>{F.curTouched=true;updateEurPreview()};
+$('fCity').oninput=()=>F.cityTouched=true;$('fCountry').oninput=()=>F.countryTouched=true;
+document.addEventListener('click',e=>{const r=e.target.closest('.row');if(r){const x=S.expenses.find(y=>y.id===r.dataset.id);if(x)openSheet(x)}});
+$('fSave').onclick=()=>{
+  const err=m=>{$('fErr').textContent=m};
+  const amount=parseFloat(($('fAmt').value||'').replace(',','.'));if(!(amount>0))return err('Enter an amount.');
+  const cur=$('fCur').value;
+  const old=F.editId&&S.expenses.find(y=>y.id===F.editId);
+  let r=(old&&old.cur===cur&&old.rate)?old.rate:rate(cur);
+  if(!r)return err(`No exchange rate for ${cur}. Connect to the internet or set one in Settings.`);
+  const x={id:F.editId||uid(),amount,cur,rate:r,eur:Math.round(amount/r*100)/100,cat:F.cat,type:F.type,
+    date:$('fDate').value||todayStr(),note:$('fNote').value.trim(),city:$('fCity').value.trim(),country:$('fCountry').value.trim(),
+    cc:F.countryTouched?'':F.cc||'',lat:F.lat,lon:F.lon,created:old?old.created:Date.now()};
+  if(x.type==='period'){x.start=$('fFrom').value;x.end=$('fTo').value;if(!x.start||!x.end)return err('Pick both dates.');if(x.end<x.start)return err('"To" is before "From".');x.date=x.start}
+  if(old)Object.assign(old,x);else S.expenses.push(x);
+  S.lastCur=cur;if(x.country)S.geo.last={city:x.city,country:x.country,cc:x.cc};
+  save();closeSheet();render();checkAlarm();toast(old?'Updated':`Saved ${eur(x.eur)}`);
+};
+$('fDel').onclick=()=>{
+  const b=$('fDel');if(b.dataset.confirm!=='1'){b.dataset.confirm='1';b.textContent='Tap again to delete';setTimeout(()=>{b.dataset.confirm='';b.textContent='Delete expense'},3000);return}
+  S.expenses=S.expenses.filter(y=>y.id!==F.editId);b.dataset.confirm='';b.textContent='Delete expense';save();closeSheet();render();toast('Deleted')};
+
+// ---------- settings handlers ----------
+function setNum(k,v){S.settings[k]=parseFloat(v)||0;save();render();renderSettings()}
+$('sBudget').oninput=e=>setNum('budget',e.target.value);
+$('sCushVal').oninput=e=>setNum('cushionValue',e.target.value);
+$('sAlarm').oninput=e=>setNum('alarmPct',e.target.value);
+$('sStart').onchange=e=>{S.settings.start=e.target.value;save();render();renderSettings()};
+$('sEnd').onchange=e=>{S.settings.end=e.target.value;save();render();renderSettings()};
+[...$('sCushMode').children].forEach(b=>b.onclick=()=>{S.settings.cushionMode=b.dataset.v;save();render();renderSettings()});
+$('sCats').onchange=e=>{const c=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);S.settings.cats=c.length?c:DEFAULT_CATS.slice();save();renderSettings()};
+$('rList').addEventListener('change',e=>{const c=e.target.dataset.cur;if(!c)return;const v=parseFloat(e.target.value);if(v>0)S.rates.manual[c]=v;else delete S.rates.manual[c];save();toast(v>0?`${c} rate set`:`${c} back to live rate`)});
+$('rRefresh').onclick=()=>refreshRates(true);
+$('sNotify').onclick=async()=>{
+  if(!('Notification'in window))return;
+  if(S.settings.notify&&Notification.permission==='granted'){S.settings.notify=false;save();renderSettings();return}
+  let p=Notification.permission;if(p==='default')p=await Notification.requestPermission();
+  if(p==='granted'){S.settings.notify=true;S.lastNotified='';save();notify('Notifications on','You\'ll be alerted if your daily average gets too high.')}
+  else toast('Notifications blocked in phone settings');
+  renderSettings()};
+
+// ---------- data ----------
+function fileOut(name,text,type){
+  const blob=new Blob([text],{type}),file=new File([blob],name,{type});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:name}).catch(()=>{});return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+$('dJson').onclick=()=>fileOut(`trip-budget-backup-${todayStr()}.json`,JSON.stringify(S,null,1),'application/json');
+$('dCsv').onclick=()=>{const h=['date','start','end','type','category','note','amount','currency','eur','rate','city','country','lat','lon'];
+  const q=v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  const rows=S.expenses.slice().sort((a,b)=>keyDate(a).localeCompare(keyDate(b))).map(x=>[x.date,x.start||'',x.end||'',x.type,catName(x.cat),x.note,x.amount,x.cur,x.eur,x.rate,x.city,x.country,x.lat,x.lon].map(q).join(','));
+  fileOut(`trip-expenses-${todayStr()}.csv`,[h.join(',')].concat(rows).join('\n'),'text/csv')};
+$('dImport').onclick=()=>$('dFile').click();
+$('dFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+  try{const d=JSON.parse(await f.text());if(!d.settings||!Array.isArray(d.expenses))throw 0;localStorage.setItem(KEY,JSON.stringify(d));S=load();render();renderSettings();toast(`Imported ${S.expenses.length} expenses`)}
+  catch(err){toast('Not a valid backup file')}e.target.value=''};
+$('dReset').onclick=()=>{const b=$('dReset');if(b.dataset.confirm!=='1'){b.dataset.confirm='1';b.textContent='Tap again to delete EVERYTHING';setTimeout(()=>{b.dataset.confirm='';b.textContent='Delete all data'},3000);return}
+  S=blank();save();b.dataset.confirm='';b.textContent='Delete all data';render();renderSettings();toast('All data deleted')};
+
+// ---------- start ----------
+if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+render();
+if(!calc())go('settings');
+refreshRates(false);resolvePending();checkAlarm();
+window.addEventListener('online',()=>{refreshRates(false);resolvePending()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();checkAlarm();refreshRates(false)}});
+</script>
+</body>
+</html>
