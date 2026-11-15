@@ -143,7 +143,10 @@ textarea{min-height:150px}
     <div class="label">Data (stored only on this phone)</div>
     <button class="btn sec" id="dJson">Export backup (JSON)</button>
     <button class="btn sec" id="dCsv">Export spreadsheet (CSV)</button>
-    <button class="btn sec" id="dImport">Import backup</button>
+    <button class="btn sec" id="dCopy">Copy backup (text)</button>
+    <button class="btn sec" id="dImport">Import backup file</button>
+    <button class="btn sec" id="dPasteBtn">Paste backup (text)</button>
+    <div id="dPasteBox" style="display:none"><textarea id="dPaste" placeholder="Paste the copied backup here"></textarea><button class="btn sec" id="dPasteGo">Import pasted backup</button></div>
     <input type="file" id="dFile" accept="application/json,.json" hidden>
     <button class="btn del" id="dReset">Delete all data</button>
   </div>
@@ -442,18 +445,28 @@ $('sNotify').onclick=async()=>{
   renderSettings()};
 
 // ---------- data ----------
+function download(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
 function fileOut(name,text,type){
-  const blob=new Blob([text],{type}),file=new File([blob],name,{type});
-  if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:name}).catch(()=>{});return}
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+  const blob=new Blob([text],{type});
+  const mobile=matchMedia('(pointer:coarse)').matches;
+  let file;try{file=new File([blob],name,{type})}catch(e){}
+  if(mobile&&file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:name}).catch(e=>{if(e&&e.name!=='AbortError')download(name,blob)});return}
+  try{download(name,blob);toast('Downloaded '+name)}catch(e){toast('Download blocked — use Copy backup')}}
+async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(e){
+  const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();return ok}}
+function importData(text){const d=JSON.parse(text);if(!d.settings||!Array.isArray(d.expenses))throw 0;localStorage.setItem(KEY,JSON.stringify(d));S=load();render();renderSettings();toast(`Imported ${S.expenses.length} expenses`)}
 $('dJson').onclick=()=>fileOut(`trip-budget-backup-${todayStr()}.json`,JSON.stringify(S,null,1),'application/json');
 $('dCsv').onclick=()=>{const h=['date','start','end','type','category','note','amount','currency','eur','rate','city','country','lat','lon'];
   const q=v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   const rows=S.expenses.slice().sort((a,b)=>keyDate(a).localeCompare(keyDate(b))).map(x=>[x.date,x.start||'',x.end||'',x.type,catName(x.cat),x.note,x.amount,x.cur,x.eur,x.rate,x.city,x.country,x.lat,x.lon].map(q).join(','));
   fileOut(`trip-expenses-${todayStr()}.csv`,[h.join(',')].concat(rows).join('\n'),'text/csv')};
 $('dImport').onclick=()=>$('dFile').click();
+$('dCopy').onclick=async()=>toast(await copyText(JSON.stringify(S))?'Backup copied — paste it on your phone':'Copy failed');
+$('dPasteBtn').onclick=()=>{const b=$('dPasteBox');b.style.display=b.style.display==='none'?'':'none'};
+$('dPasteGo').onclick=()=>{try{importData($('dPaste').value.trim());$('dPaste').value='';$('dPasteBox').style.display='none'}catch(e){toast('That text is not a valid backup')}};
 $('dFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
-  try{const d=JSON.parse(await f.text());if(!d.settings||!Array.isArray(d.expenses))throw 0;localStorage.setItem(KEY,JSON.stringify(d));S=load();render();renderSettings();toast(`Imported ${S.expenses.length} expenses`)}
+  try{importData(await f.text())}
   catch(err){toast('Not a valid backup file')}e.target.value=''};
 $('dReset').onclick=()=>{const b=$('dReset');if(b.dataset.confirm!=='1'){b.dataset.confirm='1';b.textContent='Tap again to delete EVERYTHING';setTimeout(()=>{b.dataset.confirm='';b.textContent='Delete all data'},3000);return}
   S=blank();save();b.dataset.confirm='';b.textContent='Delete all data';render();renderSettings();toast('All data deleted')};
