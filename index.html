@@ -84,6 +84,8 @@ textarea{min-height:150px}
 .empty{color:var(--muted);text-align:center;padding:24px 8px}
 .kv{display:flex;justify-content:space-between;padding:4px 0}
 .kv span:first-child{color:var(--muted)}
+.tog{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:15px;margin:14px 0 2px}
+.tog input{width:22px;height:22px;margin:0;accent-color:var(--acc)}
 .chartwrap{position:relative;margin-top:6px}
 .yaxis{position:absolute;left:0;top:0;width:40px;pointer-events:none}
 .xscroll{margin-left:40px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin}
@@ -201,14 +203,12 @@ textarea{min-height:150px}
   </div>
   <div class="hint" id="fEur"></div>
   <label>Category</label><div class="chips" id="fCats"></div>
-  <label>Type</label>
-  <div class="seg" id="fType"><button data-v="day">Day</button><button data-v="period">Period</button><button data-v="trip">Whole trip</button></div>
-  <div class="hint" id="fTypeHint"></div>
-  <div id="fDayBox"><label>Date</label><input id="fDate" type="date"></div>
-  <div id="fPerBox" class="two" style="display:none">
-    <div><label>From</label><input id="fFrom" type="date"></div>
-    <div><label>To (incl.)</label><input id="fTo" type="date"></div>
+  <div class="two">
+    <div><label id="fFromLbl">From</label><input id="fFrom" type="date"></div>
+    <div id="fToBox"><label id="fToLbl">To</label><input id="fTo" type="date"></div>
   </div>
+  <label class="tog"><input type="checkbox" id="fTrip"> Spread over the whole trip <span class="sub">(flights, AOW, ATM fees)</span></label>
+  <div class="hint" id="fTypeHint"></div>
   <label>Note (optional)</label><input id="fNote" type="text" placeholder="e.g. Maka Hostel, tacos" autocomplete="off">
   <label>Place <span id="fGeoStat"></span></label>
   <div class="two"><input id="fCity" placeholder="City"><input id="fCountry" placeholder="Country"></div>
@@ -255,6 +255,9 @@ function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2
 let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
 
 // ---------- budget math ----------
+const isAcc=c=>/accommodation|hostel|hotel|airbnb|🛏/i.test(String(c||''));
+function nightsMode(x){return x.checkout!=null?x.checkout:isAcc(x.cat)}
+function spanOf(x){const ps=dn(x.start);let pe=dn(x.end);if(nightsMode(x)&&pe>ps)pe-=1;return[ps,pe]}
 function calc(today){
   today=today||todayStr();
   const st=S.settings;
@@ -268,7 +271,7 @@ function calc(today){
   for(const x of S.expenses){
     spent+=x.eur;
     if(x.type==='trip'){past+=elapsed?x.eur*elapsed/total:0;if(t>=s&&t<=e)todaySpent+=x.eur/total}
-    else if(x.type==='period'){const ps=dn(x.start),pe=dn(x.end),len=pe-ps+1;if(len<1)continue;
+    else if(x.type==='period'){const[ps,pe]=spanOf(x),len=pe-ps+1;if(len<1)continue;
       const ov=Math.min(pe,last)-Math.max(ps,s)+1;if(elapsed&&ov>0)past+=x.eur*ov/len;if(t>=ps&&t<=pe)todaySpent+=x.eur/len}
     else{if(elapsed&&Math.max(dn(x.date),s)<=last)past+=x.eur;if(x.date===today)todaySpent+=x.eur}
   }
@@ -380,7 +383,7 @@ function renderBanners(){
   $('hdrsub').textContent=c?(c.before?`Starts in ${c.startsIn} day${c.startsIn===1?'':'s'}`:c.after?'Trip finished':`Day ${c.elapsed} of ${c.total}`):'';
 }
 function row(x){
-  const meta=[x.city||x.country||'',x.type==='period'?`${fmtDate(x.start,{day:'numeric',month:'short'})}–${fmtDate(x.end,{day:'numeric',month:'short'})}`:fmtDate(x.date,{day:'numeric',month:'short'})].filter(Boolean).join(' · ');
+  const meta=[x.city||x.country||'',x.type==='period'?`${fmtDate(x.start,{day:'numeric',month:'short'})}–${fmtDate(x.end,{day:'numeric',month:'short'})}${nightsMode(x)?` · ${dn(x.end)-dn(x.start)||1} night${(dn(x.end)-dn(x.start))===1?'':'s'}`:''}`:fmtDate(x.date,{day:'numeric',month:'short'})].filter(Boolean).join(' · ');
   return `<div class="row" data-id="${esc(x.id)}"><div class="em">${esc(catEmoji(x.cat))}</div><div class="grow"><b>${esc(x.note||catName(x.cat))}${x.type!=='day'?`<span class="badge">${TYPE_LABEL[x.type]}</span>`:''}</b><small>${esc(meta)}</small></div><div class="amt">${eur(x.eur)}${x.cur!=='EUR'?`<small>${esc(loc(x.amount,x.cur))}</small>`:''}</div></div>`;
 }
 function renderHome(){
@@ -460,7 +463,7 @@ function dailyData(c){
   const put=(i,x,amt,kind)=>{if(i<0||i>=c.total)return;const d=days[i];d.items.push({x,amt,kind});d[kind]+=amt;d.total+=amt;d.byCat[x.cat]=(d.byCat[x.cat]||0)+amt};
   for(const x of S.expenses){
     if(x.type==='trip')for(let i=0;i<c.total;i++)put(i,x,x.eur/c.total,'committed');
-    else if(x.type==='period'){const ps=dn(x.start),pe=dn(x.end),len=pe-ps+1;if(len<1)continue;for(let n=ps;n<=pe;n++)put(n-s,x,x.eur/len,'committed')}
+    else if(x.type==='period'){const[ps,pe]=spanOf(x),len=pe-ps+1;if(len<1)continue;for(let n=ps;n<=pe;n++)put(n-s,x,x.eur/len,'committed')}
     else{const n=Math.max(dn(x.date),s);if(n<=e)put(n-s,x,x.eur,'spent')}
   }
   let cum=0;days.forEach((d,i)=>{cum+=d.total;d.runAvg=cum/(i+1);d.status=d.total>c.threshold?'alarm':d.total>c.maxAvg+1e-9?'over':'good'});
@@ -542,12 +545,18 @@ $('groupBy').onchange=$('sortBy').onchange=renderList;
 let F={};
 function fillCurrencies(sel){const set=new Set(CURS);Object.keys(S.rates.rates||{}).forEach(c=>set.add(c));
   $('fCur').innerHTML=[...set].map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join('')}
-function setType(t){F.type=t;[...$('fType').children].forEach(b=>b.classList.toggle('on',b.dataset.v===t));
-  $('fDayBox').style.display=t==='period'?'none':'';$('fPerBox').style.display=t==='period'?'flex':'none';
-  $('fTypeHint').textContent=t==='day'?'Counts on this date.':t==='period'?'Spread evenly over these dates (e.g. 4-night hostel).':'Spread over the whole trip (e.g. flights, AOW, ATM fees).';
-  $('fDayBox').querySelector('label').textContent=t==='trip'?'Date paid':'Date';}
+function curType(){const f=$('fFrom').value,t=$('fTo').value||f;return $('fTrip').checked?'trip':(!t||t===f)?'day':'period'}
+function updateWhen(){
+  const trip=$('fTrip').checked,acc=isAcc(F.cat),f=$('fFrom').value,t=$('fTo').value||f;
+  $('fToBox').style.visibility=trip?'hidden':'';$('fFromLbl').textContent=trip?'Date paid':acc?'Check-in':'From';$('fToLbl').textContent=acc?'Check-out':'To';
+  const h=$('fTypeHint');
+  if(trip)h.textContent='Spread evenly over every day of the trip.';
+  else if(!f)h.textContent='';
+  else if(t<f)h.textContent='⚠️ End date is before start date.';
+  else if(t===f)h.textContent=`Single expense on ${fmtDate(f)}.`;
+  else{const n=dn(t)-dn(f);h.textContent=acc?`${n} night${n===1?'':'s'}: ${fmtDate(f,{day:'numeric',month:'short'})} – ${fmtDate(dayIso(dn(t)-1),{day:'numeric',month:'short'})} (check-out day not counted)`:`Spread over ${n+1} days.`}}
 function setCat(c){F.cat=c;[...$('fCats').children].forEach(b=>b.classList.toggle('on',b.dataset.c===c));
-  if(!F.typeTouched&&!F.editId)setType(/atm/i.test(c)?'trip':'day')}
+  if(!F.typeTouched&&!F.editId)$('fTrip').checked=/atm/i.test(c);updateWhen()}
 function updateEurPreview(){if(!$('sheet').classList.contains('on'))return;const a=parseAmount($('fAmt').value),c=$('fCur').value;
   if(!(a>0)){$('fEur').textContent=c==='EUR'?'':(rate(c)?`1 € = ${loc(rate(c),c)}`:`No rate for ${c} — set one in Settings`);return}
   const e=toEur(a,c);$('fEur').textContent=c==='EUR'?'':e!=null?`≈ ${eur(e)}`:`No rate for ${c} — set one in Settings`}
@@ -556,10 +565,10 @@ function openSheet(x){
   $('fTitle').textContent=x?'Edit expense':'Add expense';$('fDel').style.display=x?'':'none';$('fErr').textContent='';
   fillCurrencies(x?x.cur:S.lastCur);
   $('fAmt').value=x?x.amount:'';$('fNote').value=x?x.note||'':'';
-  const t=todayStr();$('fDate').value=x?x.date:t;$('fFrom').value=x&&x.start||t;$('fTo').value=x&&x.end||t;
+  const t=todayStr();$('fFrom').value=x?(x.type==='period'?x.start:x.date):t;$('fTo').value=x?(x.type==='period'?x.end:x.date):t;$('fTrip').checked=!!x&&x.type==='trip';
   $('fCats').innerHTML=S.settings.cats.map(c=>`<button class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('');
   [...$('fCats').children].forEach(b=>b.onclick=()=>setCat(b.dataset.c));
-  setType(x?x.type:'day');setCat(x&&S.settings.cats.includes(x.cat)?x.cat:(x?x.cat:S.settings.cats[0]));
+  setCat(x&&S.settings.cats.includes(x.cat)?x.cat:(x?x.cat:S.settings.cats[0]));
   const last=S.geo.last||{};
   $('fCity').value=x?x.city||'':last.city||'';$('fCountry').value=x?x.country||'':last.country||'';
   $('fGeoStat').textContent='';
@@ -580,7 +589,9 @@ function closeSheet(){$('sheet').classList.remove('on')}
 $('fab').onclick=()=>openSheet(null);
 $('fClose').onclick=closeSheet;
 $('sheet').onclick=e=>{if(e.target===$('sheet'))closeSheet()};
-[...$('fType').children].forEach(b=>b.onclick=()=>{F.typeTouched=true;setType(b.dataset.v)});
+$('fFrom').addEventListener('change',()=>{$('fTo').value=$('fFrom').value;updateWhen()});
+$('fTo').addEventListener('change',updateWhen);
+$('fTrip').addEventListener('change',()=>{F.typeTouched=true;updateWhen()});
 $('fAmt').oninput=updateEurPreview;
 $('fAmt').addEventListener('paste',e=>{const t=(e.clipboardData||window.clipboardData).getData('text');if(!t)return;e.preventDefault();
   const v=parseAmount(t);$('fAmt').value=isNaN(v)?'':String(v);const c=detectCur(t);if(c){F.curTouched=true;fillCurrencies(c)}updateEurPreview()});
@@ -594,10 +605,12 @@ $('fSave').onclick=()=>{
   const old=F.editId&&S.expenses.find(y=>y.id===F.editId);
   let r=(old&&old.cur===cur&&old.rate)?old.rate:rate(cur);
   if(!r)return err(`No exchange rate for ${cur}. Connect to the internet or set one in Settings.`);
-  const x={id:F.editId||uid(),amount,cur,rate:r,eur:Math.round(amount/r*100)/100,cat:F.cat,type:F.type,
-    date:$('fDate').value||todayStr(),note:$('fNote').value.trim(),city:$('fCity').value.trim(),country:$('fCountry').value.trim(),
+  const x={id:F.editId||uid(),amount,cur,rate:r,eur:Math.round(amount/r*100)/100,cat:F.cat,type:curType(),
+    date:$('fFrom').value||todayStr(),note:$('fNote').value.trim(),city:$('fCity').value.trim(),country:$('fCountry').value.trim(),
     cc:F.countryTouched?'':F.cc||'',lat:F.lat,lon:F.lon,created:old?old.created:Date.now(),updated:Date.now()};
-  if(x.type==='period'){x.start=$('fFrom').value;x.end=$('fTo').value;if(!x.start||!x.end)return err('Pick both dates.');if(x.end<x.start)return err('"To" is before "From".');x.date=x.start}
+  if(x.type==='period'){x.start=$('fFrom').value;x.end=$('fTo').value;if(x.end<x.start)return err('End date is before start date.');x.checkout=isAcc(x.cat);x.date=x.start}
+  else{delete x.start;delete x.end}
+  if(old){delete old.start;delete old.end;delete old.checkout}
   if(old)Object.assign(old,x);else S.expenses.push(x);
   S.lastCur=cur;if(x.country)S.geo.last={city:x.city,country:x.country,cc:x.cc};
   save();closeSheet();render();checkAlarm();toast(old?'Updated':`Saved ${eur(x.eur)}`);
