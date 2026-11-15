@@ -87,7 +87,7 @@ textarea{min-height:150px}
 </style>
 </head>
 <body>
-<header><div><h1>Trip Budget</h1><small id="hdrsub"></small></div></header>
+<header><div><h1>Trip Budget</h1><small id="hdrsub"></small></div><span id="hdrsync" style="font-size:20px"></span></header>
 <div id="bannerAlarm" class="banner bad"></div>
 <div id="bannerCushion" class="banner warn"></div>
 <div id="bannerSetup" class="banner info">Start by setting your budget and trip dates in Settings.</div>
@@ -140,7 +140,17 @@ textarea{min-height:150px}
     <div class="hint">Type a number to override the live rate; leave empty to use live.</div>
   </div>
   <div class="card">
-    <div class="label">Data (stored only on this phone)</div>
+    <div class="label">Cloud sync (laptop + phone)</div>
+    <div class="hint" id="ySync">Not connected — data stays on this device only.</div>
+    <label>Private repo (owner/name)</label><input id="yRepo" placeholder="lucaie/trip-budget-data" autocomplete="off" autocapitalize="off">
+    <label>GitHub token</label><input id="yToken" type="password" placeholder="github_pat_…" autocomplete="off">
+    <button class="btn sec" id="yConnect">Connect &amp; sync</button>
+    <button class="btn sec" id="yNow">Sync now</button>
+    <button class="btn sec" id="yOff">Disconnect this device</button>
+    <div class="hint">Use a fine-grained token limited to that one repo with Contents: Read and write. The token stays on this device and is never included in exports.</div>
+  </div>
+  <div class="card">
+    <div class="label">Backup</div>
     <button class="btn sec" id="dJson">Export backup (JSON)</button>
     <button class="btn sec" id="dCsv">Export spreadsheet (CSV)</button>
     <button class="btn sec" id="dCopy">Copy backup (text)</button>
@@ -193,10 +203,10 @@ const CURS=['EUR','USD','MXN','COP','DKK','GBP','GTQ','BZD','PEN','CRC','CAD'];
 const TYPE_LABEL={day:'Day',period:'Period',trip:'Whole trip'};
 const $=id=>document.getElementById(id);
 
-function blank(){return{settings:{budget:0,start:'',end:'',cushionMode:'eur',cushionValue:0,alarmPct:10,notify:false,cats:DEFAULT_CATS.slice()},expenses:[],rates:{ts:0,rates:{},manual:{}},geo:{cache:{},last:null},lastCur:'EUR',lastNotified:''}}
-function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.settings){const b=blank();return{...b,...s,settings:{...b.settings,...s.settings},rates:{...b.rates,...s.rates},geo:{...b.geo,...s.geo},expenses:Array.isArray(s.expenses)?s.expenses:[]}}}catch(e){}return blank()}
+function blank(){return{settings:{budget:0,start:'',end:'',cushionMode:'eur',cushionValue:0,alarmPct:10,notify:false,cats:DEFAULT_CATS.slice()},expenses:[],rates:{ts:0,rates:{},manual:{}},geo:{cache:{},last:null},lastCur:'EUR',lastNotified:'',deleted:{}}}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.settings){const b=blank();return{...b,...s,settings:{...b.settings,...s.settings},rates:{...b.rates,...s.rates},geo:{...b.geo,...s.geo},expenses:Array.isArray(s.expenses)?s.expenses:[],deleted:s.deleted||{}}}}catch(e){}return blank()}
 let S=load();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('⚠️ Could not save on this device')}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('⚠️ Could not save on this device')}scheduleSync()}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 
 // ---------- helpers ----------
@@ -209,6 +219,14 @@ function loc(n,c){return Number(n).toLocaleString(undefined,{maximumFractionDigi
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function catEmoji(c){const p=String(c).split(' ');return /\p{Extended_Pictographic}/u.test(p[0])?p[0]:'•'}
 function catName(c){const p=String(c).split(' ');return /\p{Extended_Pictographic}/u.test(p[0])?p.slice(1).join(' '):c}
+function parseAmount(raw){
+  const toks=String(raw==null?'':raw).match(/\d[\d.,]*/g);if(!toks)return NaN;
+  const vals=toks.map(t=>{t=t.replace(/[.,]+$/,'');
+    if(!t.includes('.')&&/,\d{1,2}$/.test(t))t=t.replace(/,(?=\d{1,2}$)/,'.');
+    t=t.replace(/,/g,'');if((t.match(/\./g)||[]).length>1)t=t.replace(/\./g,'');
+    return parseFloat(t)}).filter(v=>!isNaN(v));
+  return vals.length?Math.max(...vals):NaN}
+function detectCur(t){const m=String(t).toUpperCase().match(/\b(EUR|USD|MXN|COP|DKK|GBP|GTQ|BZD|PEN|CRC|CAD)\b/);return m?m[1]:/€/.test(t)?'EUR':null}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
 
@@ -259,8 +277,57 @@ async function reverse(lat,lon){
     if(g.country){S.geo.cache[k]=g;S.geo.last=g;save()}return g.country?g:null}catch(e){return null}
 }
 async function resolvePending(){let ch=false;
-  for(const x of S.expenses){if(x.lat!=null&&!x.country){const g=await reverse(x.lat,x.lon);if(g){x.city=x.city||g.city;x.country=g.country;x.cc=g.cc;ch=true}}}
+  for(const x of S.expenses){if(x.lat!=null&&!x.country){const g=await reverse(x.lat,x.lon);if(g){x.city=x.city||g.city;x.country=g.country;x.cc=g.cc;x.updated=Date.now();ch=true}}}
   if(ch){save();render()}}
+
+// ---------- cloud sync (private GitHub repo) ----------
+const SKEY='tripbudget_sync';
+let Y=(()=>{try{return JSON.parse(localStorage.getItem(SKEY))||{}}catch(e){return{}}})();
+function saveY(){try{localStorage.setItem(SKEY,JSON.stringify(Y))}catch(e){}}
+const FILE='trip-budget-data.json';
+function payload(){return{v:1,settings:{...S.settings,manualRates:S.rates.manual},expenses:S.expenses,deleted:S.deleted}}
+function b64e(str){const b=new TextEncoder().encode(str);let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));return btoa(s)}
+function b64d(b64){const bin=atob(b64.replace(/\s/g,''));return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)))}
+function merge(r){
+  if(!r)return;
+  const del={...(r.deleted||{})};for(const[k,v]of Object.entries(S.deleted||{}))del[k]=Math.max(del[k]||0,v);
+  const m=new Map();const stamp=x=>x.updated||x.created||0;
+  for(const x of(r.expenses||[]))m.set(x.id,x);
+  for(const x of S.expenses){const o=m.get(x.id);if(!o||stamp(x)>=stamp(o))m.set(x.id,x)}
+  S.expenses=[...m.values()].filter(x=>!(del[x.id]>=stamp(x)));S.deleted=del;
+  if(r.settings&&(r.settings.updated||0)>(S.settings.updated||0)){const{manualRates,...st}=r.settings;S.settings={...blank().settings,...st};S.rates.manual=manualRates||{}}
+}
+async function gh(method,body){
+  const[o,rp]=(Y.repo||'').split('/');
+  const r=await fetch(`https://api.github.com/repos/${o}/${rp}/contents/${FILE}`,{method,cache:'no-store',
+    headers:{Authorization:'Bearer '+Y.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},body:body?JSON.stringify(body):undefined});
+  return r}
+let syncT,syncing=false,syncAgain=false;
+function scheduleSync(){if(!Y.token)return;clearTimeout(syncT);syncT=setTimeout(()=>sync(false),1500)}
+function setSyncStatus(t,ok){Y.status=t;Y.ok=ok;saveY();const el=$('ySync');if(el)el.textContent=t;$('hdrsync').textContent=Y.token?(ok?'☁️':'⚠️'):''}
+async function sync(force){
+  if(!Y.token||!Y.repo)return;if(!navigator.onLine){setSyncStatus('Offline — will sync when back online',false);return}
+  if(syncing){syncAgain=true;return}syncing=true;
+  try{
+    for(let attempt=0;attempt<3;attempt++){
+      const g=await gh('GET');let remote=null,sha;
+      if(g.status===200){const j=await g.json();sha=j.sha;remote=JSON.parse(b64d(j.content))}
+      else if(g.status===401)throw new Error('Token rejected — check it in Settings');
+      else if(g.status===404){const t=await fetch(`https://api.github.com/repos/${Y.repo}`,{headers:{Authorization:'Bearer '+Y.token}});if(t.status!==200)throw new Error('Repo not found or token has no access to it')}
+      else throw new Error('GitHub error '+g.status);
+      const before=JSON.stringify(payload());merge(remote);const after=JSON.stringify(payload());
+      if(after!==before){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render();if(view==='settings')renderSettings()}
+      if(remote&&after===JSON.stringify(remote)){Y.last=Date.now();break}
+      const p=await gh('PUT',{message:'Trip Budget sync',content:b64e(after),...(sha?{sha}:{})});
+      if(p.status===200||p.status===201){Y.last=Date.now();break}
+      if(p.status===409||p.status===422)continue;
+      if(p.status===403||p.status===404)throw new Error('Token can\'t write — give it Contents: Read and write');
+      throw new Error('GitHub error '+p.status);
+    }
+    setSyncStatus('Synced '+new Date(Y.last).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),true);
+  }catch(e){setSyncStatus('Sync failed: '+(e.message||e),false)}
+  finally{syncing=false;if(syncAgain){syncAgain=false;scheduleSync()}}
+}
 
 // ---------- notifications ----------
 async function notify(title,body){
@@ -347,6 +414,7 @@ function renderSettings(){
   $('sCushHint').textContent=st.cushionMode==='pct'?`${st.cushionValue||0}% = ${eur(st.budget*(st.cushionValue||0)/100,0)}`:'Amount in €';
   const perm=('Notification'in window)?Notification.permission:'unsupported';
   $('sNotify').textContent=perm==='unsupported'?'🔕 Notifications not supported here':st.notify&&perm==='granted'?'🔔 Notifications on (tap to turn off)':'🔕 Turn on notifications';
+  if(document.activeElement!==$('yRepo'))$('yRepo').value=Y.repo||'';$('ySync').textContent=Y.token?(Y.status||'Connected'):'Not connected — data stays on this device only.';
   $('rStatus').textContent=S.rates.ts?`Live rates from ${new Date(S.rates.ts).toLocaleString()}`:'No live rates yet (needs internet).';
   const used=new Set(CURS);S.expenses.forEach(x=>used.add(x.cur));
   $('rList').innerHTML=[...used].filter(c=>c!=='EUR').map(c=>`<div class="kv" style="align-items:center;gap:8px"><span style="width:50px">${c}</span><input data-cur="${c}" type="number" inputmode="decimal" step="any" placeholder="${S.rates.rates[c]?(+S.rates.rates[c].toPrecision(6)):'no rate'}" value="${S.rates.manual[c]||''}" style="flex:1"></div>`).join('');
@@ -369,7 +437,7 @@ function setType(t){F.type=t;[...$('fType').children].forEach(b=>b.classList.tog
   $('fDayBox').querySelector('label').textContent=t==='trip'?'Date paid':'Date';}
 function setCat(c){F.cat=c;[...$('fCats').children].forEach(b=>b.classList.toggle('on',b.dataset.c===c));
   if(!F.typeTouched&&!F.editId)setType(/atm/i.test(c)?'trip':'day')}
-function updateEurPreview(){if(!$('sheet').classList.contains('on'))return;const a=parseFloat(($('fAmt').value||'').replace(',','.')),c=$('fCur').value;
+function updateEurPreview(){if(!$('sheet').classList.contains('on'))return;const a=parseAmount($('fAmt').value),c=$('fCur').value;
   if(!(a>0)){$('fEur').textContent=c==='EUR'?'':(rate(c)?`1 € = ${loc(rate(c),c)}`:`No rate for ${c} — set one in Settings`);return}
   const e=toEur(a,c);$('fEur').textContent=c==='EUR'?'':e!=null?`≈ ${eur(e)}`:`No rate for ${c} — set one in Settings`}
 function openSheet(x){
@@ -403,19 +471,21 @@ $('fClose').onclick=closeSheet;
 $('sheet').onclick=e=>{if(e.target===$('sheet'))closeSheet()};
 [...$('fType').children].forEach(b=>b.onclick=()=>{F.typeTouched=true;setType(b.dataset.v)});
 $('fAmt').oninput=updateEurPreview;
+$('fAmt').addEventListener('paste',e=>{const t=(e.clipboardData||window.clipboardData).getData('text');if(!t)return;e.preventDefault();
+  const v=parseAmount(t);$('fAmt').value=isNaN(v)?'':String(v);const c=detectCur(t);if(c){F.curTouched=true;fillCurrencies(c)}updateEurPreview()});
 $('fCur').onchange=()=>{F.curTouched=true;updateEurPreview()};
 $('fCity').oninput=()=>F.cityTouched=true;$('fCountry').oninput=()=>F.countryTouched=true;
 document.addEventListener('click',e=>{const r=e.target.closest('.row');if(r){const x=S.expenses.find(y=>y.id===r.dataset.id);if(x)openSheet(x)}});
 $('fSave').onclick=()=>{
   const err=m=>{$('fErr').textContent=m};
-  const amount=parseFloat(($('fAmt').value||'').replace(',','.'));if(!(amount>0))return err('Enter an amount.');
+  const amount=Math.round(parseAmount($('fAmt').value)*100)/100;if(!(amount>0))return err('Enter an amount.');
   const cur=$('fCur').value;
   const old=F.editId&&S.expenses.find(y=>y.id===F.editId);
   let r=(old&&old.cur===cur&&old.rate)?old.rate:rate(cur);
   if(!r)return err(`No exchange rate for ${cur}. Connect to the internet or set one in Settings.`);
   const x={id:F.editId||uid(),amount,cur,rate:r,eur:Math.round(amount/r*100)/100,cat:F.cat,type:F.type,
     date:$('fDate').value||todayStr(),note:$('fNote').value.trim(),city:$('fCity').value.trim(),country:$('fCountry').value.trim(),
-    cc:F.countryTouched?'':F.cc||'',lat:F.lat,lon:F.lon,created:old?old.created:Date.now()};
+    cc:F.countryTouched?'':F.cc||'',lat:F.lat,lon:F.lon,created:old?old.created:Date.now(),updated:Date.now()};
   if(x.type==='period'){x.start=$('fFrom').value;x.end=$('fTo').value;if(!x.start||!x.end)return err('Pick both dates.');if(x.end<x.start)return err('"To" is before "From".');x.date=x.start}
   if(old)Object.assign(old,x);else S.expenses.push(x);
   S.lastCur=cur;if(x.country)S.geo.last={city:x.city,country:x.country,cc:x.cc};
@@ -423,19 +493,25 @@ $('fSave').onclick=()=>{
 };
 $('fDel').onclick=()=>{
   const b=$('fDel');if(b.dataset.confirm!=='1'){b.dataset.confirm='1';b.textContent='Tap again to delete';setTimeout(()=>{b.dataset.confirm='';b.textContent='Delete expense'},3000);return}
-  S.expenses=S.expenses.filter(y=>y.id!==F.editId);b.dataset.confirm='';b.textContent='Delete expense';save();closeSheet();render();toast('Deleted')};
+  S.deleted[F.editId]=Date.now();S.expenses=S.expenses.filter(y=>y.id!==F.editId);b.dataset.confirm='';b.textContent='Delete expense';save();closeSheet();render();toast('Deleted')};
 
 // ---------- settings handlers ----------
-function setNum(k,v){S.settings[k]=parseFloat(v)||0;save();render();renderSettings()}
+function touchSettings(){S.settings.updated=Date.now()}
+function setNum(k,v){S.settings[k]=parseFloat(v)||0;touchSettings();save();render();renderSettings()}
 $('sBudget').oninput=e=>setNum('budget',e.target.value);
 $('sCushVal').oninput=e=>setNum('cushionValue',e.target.value);
 $('sAlarm').oninput=e=>setNum('alarmPct',e.target.value);
-$('sStart').onchange=e=>{S.settings.start=e.target.value;save();render();renderSettings()};
-$('sEnd').onchange=e=>{S.settings.end=e.target.value;save();render();renderSettings()};
-[...$('sCushMode').children].forEach(b=>b.onclick=()=>{S.settings.cushionMode=b.dataset.v;save();render();renderSettings()});
-$('sCats').onchange=e=>{const c=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);S.settings.cats=c.length?c:DEFAULT_CATS.slice();save();renderSettings()};
-$('rList').addEventListener('change',e=>{const c=e.target.dataset.cur;if(!c)return;const v=parseFloat(e.target.value);if(v>0)S.rates.manual[c]=v;else delete S.rates.manual[c];save();toast(v>0?`${c} rate set`:`${c} back to live rate`)});
+$('sStart').onchange=e=>{S.settings.start=e.target.value;touchSettings();save();render();renderSettings()};
+$('sEnd').onchange=e=>{S.settings.end=e.target.value;touchSettings();save();render();renderSettings()};
+[...$('sCushMode').children].forEach(b=>b.onclick=()=>{S.settings.cushionMode=b.dataset.v;touchSettings();save();render();renderSettings()});
+$('sCats').onchange=e=>{const c=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);S.settings.cats=c.length?c:DEFAULT_CATS.slice();touchSettings();save();renderSettings()};
+$('rList').addEventListener('change',e=>{const c=e.target.dataset.cur;if(!c)return;const v=parseFloat(e.target.value);if(v>0)S.rates.manual[c]=v;else delete S.rates.manual[c];touchSettings();save();toast(v>0?`${c} rate set`:`${c} back to live rate`)});
 $('rRefresh').onclick=()=>refreshRates(true);
+$('yConnect').onclick=async()=>{const repo=$('yRepo').value.trim().replace(/^https?:\/\/github\.com\//,'').replace(/\/$/,''),token=$('yToken').value.trim();
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)||!token){toast('Enter repo as owner/name and a token');return}
+  Y={repo,token};saveY();setSyncStatus('Connecting…',true);await sync(true);toast(Y.ok?'Connected':'Could not connect')};
+$('yNow').onclick=()=>sync(true);
+$('yOff').onclick=()=>{Y={};saveY();$('yToken').value='';setSyncStatus('Not connected — data stays on this device only.',false);$('hdrsync').textContent='';toast('This device disconnected')};
 $('sNotify').onclick=async()=>{
   if(!('Notification'in window))return;
   if(S.settings.notify&&Notification.permission==='granted'){S.settings.notify=false;save();renderSettings();return}
@@ -455,7 +531,7 @@ function fileOut(name,text,type){
   try{download(name,blob);toast('Downloaded '+name)}catch(e){toast('Download blocked — use Copy backup')}}
 async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(e){
   const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();return ok}}
-function importData(text){const d=JSON.parse(text);if(!d.settings||!Array.isArray(d.expenses))throw 0;localStorage.setItem(KEY,JSON.stringify(d));S=load();render();renderSettings();toast(`Imported ${S.expenses.length} expenses`)}
+function importData(text){const d=JSON.parse(text);if(!d.settings||!Array.isArray(d.expenses))throw 0;const now=Date.now();d.settings.updated=now;d.expenses.forEach(x=>{x.updated=Math.max(x.updated||0,now)});d.deleted=d.deleted||{};d.expenses.forEach(x=>delete d.deleted[x.id]);localStorage.setItem(KEY,JSON.stringify(d));S=load();render();renderSettings();toast(`Imported ${S.expenses.length} expenses`)}
 $('dJson').onclick=()=>fileOut(`trip-budget-backup-${todayStr()}.json`,JSON.stringify(S,null,1),'application/json');
 $('dCsv').onclick=()=>{const h=['date','start','end','type','category','note','amount','currency','eur','rate','city','country','lat','lon'];
   const q=v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
@@ -469,15 +545,15 @@ $('dFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{importData(await f.text())}
   catch(err){toast('Not a valid backup file')}e.target.value=''};
 $('dReset').onclick=()=>{const b=$('dReset');if(b.dataset.confirm!=='1'){b.dataset.confirm='1';b.textContent='Tap again to delete EVERYTHING';setTimeout(()=>{b.dataset.confirm='';b.textContent='Delete all data'},3000);return}
-  S=blank();save();b.dataset.confirm='';b.textContent='Delete all data';render();renderSettings();toast('All data deleted')};
+  const now=Date.now(),del={...S.deleted};S.expenses.forEach(x=>del[x.id]=now);S=blank();S.deleted=del;S.settings.updated=now;save();b.dataset.confirm='';b.textContent='Delete all data';render();renderSettings();toast('All data deleted')};
 
 // ---------- start ----------
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();
 if(!calc())go('settings');
-refreshRates(false);resolvePending();checkAlarm();
-window.addEventListener('online',()=>{refreshRates(false);resolvePending()});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();checkAlarm();refreshRates(false)}});
+refreshRates(false);resolvePending();checkAlarm();if(Y.token){$('hdrsync').textContent=Y.ok?'☁️':'⚠️';sync(true)}
+window.addEventListener('online',()=>{refreshRates(false);resolvePending();sync(true)});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();checkAlarm();refreshRates(false);sync(true)}});
 </script>
 </body>
 </html>
