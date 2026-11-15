@@ -21,7 +21,7 @@ body{padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))
 header{padding:14px 16px 6px;display:flex;align-items:center;justify-content:space-between}
 header h1{font-size:20px;margin:0}
 header small{color:var(--muted)}
-main{padding:0 12px 20px;display:none}
+main{padding:0 12px 90px;display:none}
 main.on{display:block}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0}
 .banner{border-radius:14px;padding:12px 14px;margin:10px 12px 0;font-weight:600;display:none}
@@ -84,6 +84,17 @@ textarea{min-height:150px}
 .empty{color:var(--muted);text-align:center;padding:24px 8px}
 .kv{display:flex;justify-content:space-between;padding:4px 0}
 .kv span:first-child{color:var(--muted)}
+.chartwrap{position:relative;margin-top:6px}
+.yaxis{position:absolute;left:0;top:0;width:40px;pointer-events:none}
+.xscroll{margin-left:40px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin}
+.xscroll svg{display:block}
+.xscroll .hit{cursor:pointer}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+.legend .ln{width:16px;height:0;border-radius:0;border-top:2px solid;vertical-align:3px}
+.navrow{display:flex;gap:8px;align-items:center;margin-top:8px}
+.navrow button{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:8px;font:600 14px inherit}
+.dstat{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--bg)}
 </style>
 </head>
 <body>
@@ -108,6 +119,18 @@ textarea{min-height:150px}
     </select>
   </div>
   <div id="listOut"></div>
+</main>
+<main id="v-chart">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div class="label">Cost per day</div>
+      <div class="seg" id="cMode" style="width:190px"><button data-v="status">Status</button><button data-v="cat">Category</button></div>
+    </div>
+    <div class="chartwrap"><svg class="yaxis" id="cY"></svg><div class="xscroll" id="cScroll"><svg id="cSvg"></svg></div></div>
+    <div class="navrow"><button id="cPrev">◀ Week</button><button id="cToday">Today</button><button id="cNext">Week ▶</button></div>
+    <div class="legend" id="cLegend"></div>
+  </div>
+  <div class="card" id="cDetail"></div>
 </main>
 <main id="v-settings">
   <div class="card">
@@ -166,6 +189,7 @@ textarea{min-height:150px}
 <nav>
   <button data-v="home" class="on"><div>🏠</div>Home</button>
   <button data-v="list"><div>🧾</div>Expenses</button>
+  <button data-v="chart"><div>📊</div>Daily</button>
   <button data-v="settings"><div>⚙️</div>Settings</button>
 </nav>
 
@@ -345,7 +369,7 @@ function checkAlarm(){const c=calc();if(!c)return;
 
 // ---------- rendering ----------
 let view='home';
-function render(){renderBanners();renderHome();renderList();}
+function render(){renderBanners();renderHome();renderList();if(view==='chart')renderChart()}
 function renderBanners(){
   const c=calc(),st=S.settings;
   $('bannerSetup').classList.toggle('on',!c);
@@ -420,10 +444,96 @@ function renderSettings(){
   $('rList').innerHTML=[...used].filter(c=>c!=='EUR').map(c=>`<div class="kv" style="align-items:center;gap:8px"><span style="width:50px">${c}</span><input data-cur="${c}" type="number" inputmode="decimal" step="any" placeholder="${S.rates.rates[c]?(+S.rates.rates[c].toPrecision(6)):'no rate'}" value="${S.rates.manual[c]||''}" style="flex:1"></div>`).join('');
 }
 
+// ---------- daily chart ----------
+const SERIES=['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#6250d6','#e34948'];
+const SERIES_D=['#3987e5','#d95926','#199e70','#c98500','#d55181','#0ca30c','#9085e9','#e66767'];
+const ST={good:'#0ca30c',over:'#ec835a',alarm:'#d03b3b'};
+const ST_LABEL={good:'✓ Within max',over:'▲ Over max',alarm:'⚠ Over alarm'};
+let chartMode='status',chartSel=null,chartScrolled=false;
+const dark=()=>matchMedia('(prefers-color-scheme:dark)').matches;
+function catColor(c){const i=S.settings.cats.indexOf(c);return i>=0&&i<8?(dark()?SERIES_D:SERIES)[i]:'#8a918e'}
+function dayIso(n){const d=new Date(n*864e5);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())}
+function dailyData(c){
+  const s=dn(S.settings.start),e=dn(S.settings.end),days=[];
+  for(let i=0;i<c.total;i++)days.push({n:s+i,iso:dayIso(s+i),items:[],committed:0,spent:0,total:0,byCat:{}});
+  const put=(i,x,amt,kind)=>{if(i<0||i>=c.total)return;const d=days[i];d.items.push({x,amt,kind});d[kind]+=amt;d.total+=amt;d.byCat[x.cat]=(d.byCat[x.cat]||0)+amt};
+  for(const x of S.expenses){
+    if(x.type==='trip')for(let i=0;i<c.total;i++)put(i,x,x.eur/c.total,'committed');
+    else if(x.type==='period'){const ps=dn(x.start),pe=dn(x.end),len=pe-ps+1;if(len<1)continue;for(let n=ps;n<=pe;n++)put(n-s,x,x.eur/len,'committed')}
+    else{const n=Math.max(dn(x.date),s);if(n<=e)put(n-s,x,x.eur,'spent')}
+  }
+  let cum=0;days.forEach((d,i)=>{cum+=d.total;d.runAvg=cum/(i+1);d.status=d.total>c.threshold?'alarm':d.total>c.maxAvg+1e-9?'over':'good'});
+  return days;
+}
+function niceStep(max){const raw=max/4,p=Math.pow(10,Math.floor(Math.log10(raw))),m=raw/p;return(m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p}
+function renderChart(){
+  const c=calc(),svg=$('cSvg'),y=$('cY');
+  if(!c){svg.innerHTML='';y.innerHTML='';$('cLegend').innerHTML='';$('cDetail').innerHTML='<div class="empty">Set your budget and dates in Settings first.</div>';return}
+  [...$('cMode').children].forEach(b=>b.classList.toggle('on',b.dataset.v===chartMode));
+  const days=dailyData(c),SLOT=34,BW=24,H=210,TOP=12,BOT=38,W=days.length*SLOT,PH=H-TOP-BOT;
+  const peak=Math.max(c.threshold,...days.map(d=>d.total))*1.08,step=niceStep(peak),yMax=Math.ceil(peak/step)*step;
+  const Y=v=>TOP+PH-(v/yMax)*PH,tIdx=dn(todayStr())-dn(S.settings.start);
+  const muted=getComputedStyle(document.body).getPropertyValue('--muted').trim(),line=getComputedStyle(document.body).getPropertyValue('--line').trim(),ink=getComputedStyle(document.body).getPropertyValue('--ink').trim(),acc=getComputedStyle(document.body).getPropertyValue('--acc').trim();
+  let g='',ya='';
+  for(let v=0;v<=yMax+1e-9;v+=step){g+=`<line x1="0" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}" stroke-width="1"/>`;ya+=`<text x="36" y="${Y(v)+4}" text-anchor="end" font-size="11" fill="${muted}">€${Math.round(v)}</text>`}
+  if(tIdx>=0&&tIdx<days.length)g+=`<rect x="${tIdx*SLOT}" y="${TOP-8}" width="${SLOT}" height="${PH+8}" fill="${acc}" opacity=".10" rx="6"/>`;
+  days.forEach((d,i)=>{
+    const x=i*SLOT+(SLOT-BW)/2,dim=chartSel!==null&&chartSel!==i?' opacity=".45"':'';
+    const segs=chartMode==='status'?[{v:d.committed,col:ST[d.status],op:.45},{v:d.spent,col:ST[d.status],op:1}]
+      :S.settings.cats.concat(Object.keys(d.byCat).filter(k=>!S.settings.cats.includes(k))).filter(k=>d.byCat[k]).map(k=>({v:d.byCat[k],col:catColor(k),op:1}));
+    let base=0;const vis=segs.filter(sg=>sg.v>0);
+    vis.forEach((sg,k)=>{const top=k===vis.length-1,y0=Y(base),y1=Y(base+sg.v);let h=y0-y1-(k>0?2:0);if(h<1)h=1;
+      const yy=y1,r=top?4:0;
+      g+=top&&h>4?`<path d="M${x},${yy+h} V${yy+r} Q${x},${yy} ${x+r},${yy} H${x+BW-r} Q${x+BW},${yy} ${x+BW},${yy+r} V${yy+h} Z" fill="${sg.col}" fill-opacity="${sg.op}"${dim}/>`
+        :`<rect x="${x}" y="${yy}" width="${BW}" height="${h}" fill="${sg.col}" fill-opacity="${sg.op}"${dim}/>`;
+      base+=sg.v});
+    const [yy,mm,dd]=d.iso.split('-').map(Number),dt=new Date(yy,mm-1,dd),wd=dt.toLocaleDateString(undefined,{weekday:'narrow'});
+    const lab=dd===1||i===0?dt.toLocaleDateString(undefined,{month:'short'}):'';
+    g+=`<text x="${i*SLOT+SLOT/2}" y="${H-BOT+14}" text-anchor="middle" font-size="11" fill="${i===tIdx?acc:ink}" font-weight="${i===tIdx?700:500}">${dd}</text>`;
+    g+=`<text x="${i*SLOT+SLOT/2}" y="${H-BOT+26}" text-anchor="middle" font-size="10" fill="${muted}">${wd}</text>`;
+    if(lab)g+=`<text x="${i*SLOT+3}" y="${H-2}" font-size="10" font-weight="700" fill="${muted}">${lab}</text>`;
+  });
+  g+=`<line x1="0" x2="${W}" y1="${Y(c.maxAvg)}" y2="${Y(c.maxAvg)}" stroke="${ink}" stroke-width="1.5" stroke-dasharray="5 4" opacity=".7"/>`;
+  g+=`<line x1="0" x2="${W}" y1="${Y(c.threshold)}" y2="${Y(c.threshold)}" stroke="${ST.alarm}" stroke-width="1.5" stroke-dasharray="2 3"/>`;
+  const upto=Math.min(tIdx,days.length-1);
+  if(upto>=0){const pts=days.slice(0,upto+1).map((d,i)=>`${i*SLOT+SLOT/2},${Y(d.runAvg)}`).join(' ');
+    g+=`<polyline points="${pts}" fill="none" stroke="${acc}" stroke-width="2" stroke-linejoin="round"/>`;
+    g+=`<circle cx="${upto*SLOT+SLOT/2}" cy="${Y(days[upto].runAvg)}" r="4" fill="${acc}" stroke="var(--card)" stroke-width="2"/>`}
+  days.forEach((d,i)=>{g+=`<rect class="hit" data-i="${i}" x="${i*SLOT}" y="0" width="${SLOT}" height="${H}" fill="transparent"/>`});
+  svg.setAttribute('width',W);svg.setAttribute('height',H);svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML=g;
+  y.setAttribute('width',40);y.setAttribute('height',H);y.innerHTML=ya;
+  const lg=chartMode==='status'
+    ?`<span><i style="background:${ST.good}"></i>${ST_LABEL.good}</span><span><i style="background:${ST.over}"></i>${ST_LABEL.over}</span><span><i style="background:${ST.alarm}"></i>${ST_LABEL.alarm}</span><span><i style="background:${muted};opacity:.45"></i>Committed (spread)</span><span><i style="background:${muted}"></i>Spent that day</span>`
+    :S.settings.cats.map(k=>`<span><i style="background:${catColor(k)}"></i>${esc(catName(k))}</span>`).join('');
+  $('cLegend').innerHTML=lg+`<span><i class="ln" style="border-color:${ink};border-top-style:dashed"></i>Max ${eur(c.maxAvg)}</span><span><i class="ln" style="border-color:${ST.alarm};border-top-style:dotted"></i>Alarm ${eur(c.threshold)}</span><span><i class="ln" style="border-color:${acc}"></i>Running avg</span>`;
+  if(!chartScrolled){chartScrolled=true;const sc=$('cScroll');const target=Math.max(0,Math.min(days.length-1,tIdx<0?0:tIdx));requestAnimationFrame(()=>{sc.scrollLeft=Math.max(0,target*SLOT-sc.clientWidth/2+SLOT/2)})}
+  renderDayDetail(days,c,chartSel!==null?chartSel:Math.max(0,Math.min(days.length-1,tIdx<0?0:tIdx)));
+}
+function renderDayDetail(days,c,i){
+  const d=days[i];if(!d){$('cDetail').innerHTML='';return}
+  const room=c.maxAvg-d.total,agg=new Map();
+  d.items.forEach(({x,amt,kind})=>{const o=agg.get(x.id)||{x,amt:0,kind};o.amt+=amt;agg.set(x.id,o)});
+  const rows=[...agg.values()].sort((a,b)=>b.amt-a.amt).map(({x,amt,kind})=>`<div class="row" data-id="${esc(x.id)}"><div class="em">${esc(catEmoji(x.cat))}</div><div class="grow"><b>${esc(x.note||catName(x.cat))}</b><small>${kind==='committed'?(x.type==='trip'?'Whole trip, spread':'Spread '+fmtDate(x.start,{day:'numeric',month:'short'})+'–'+fmtDate(x.end,{day:'numeric',month:'short'})):'Spent this day'}${kind==='committed'?' · total '+eur(x.eur,0):''}</small></div><div class="amt">${eur(amt)}</div></div>`).join('');
+  $('cDetail').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><b>${fmtDate(d.iso,{weekday:'long',day:'numeric',month:'long'})}</b><span class="dstat" style="color:${ST[d.status]}">${ST_LABEL[d.status]}</span></div>
+   <div class="grid" style="margin-top:10px">
+    <div><div class="label">Committed</div><div class="mid">${eur(d.committed)}</div></div>
+    <div><div class="label">Spent that day</div><div class="mid">${eur(d.spent)}</div></div>
+    <div><div class="label">Day total</div><div class="mid">${eur(d.total)}</div></div>
+    <div><div class="label">${room>=0?'Left before max':'Over max by'}</div><div class="mid" style="color:${room>=0?'var(--ok)':ST[d.status]}">${eur(Math.abs(room))}</div></div>
+   </div>${rows?`<div style="margin-top:8px">${rows}</div>`:'<div class="empty">Nothing on this day yet.</div>'}`;
+}
+$('cScroll').addEventListener('click',e=>{const h=e.target.closest('.hit');if(!h)return;const i=+h.dataset.i;chartSel=chartSel===i?null:i;renderChart()});
+$('cScroll').addEventListener('mouseover',e=>{if(matchMedia('(hover:hover)').matches){const h=e.target.closest('.hit');if(h&&chartSel===null){const c=calc();if(c)renderDayDetail(dailyData(c),c,+h.dataset.i)}}});
+[...$('cMode').children].forEach(b=>b.onclick=()=>{chartMode=b.dataset.v;renderChart()});
+$('cPrev').onclick=()=>$('cScroll').scrollBy({left:-7*34,behavior:'smooth'});
+$('cNext').onclick=()=>$('cScroll').scrollBy({left:7*34,behavior:'smooth'});
+$('cToday').onclick=()=>{chartSel=null;chartScrolled=false;renderChart()};
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(view==='chart')renderChart()});
+
 // ---------- navigation ----------
 function go(v){view=v;document.querySelectorAll('main').forEach(m=>m.classList.toggle('on',m.id==='v-'+v));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  $('fab').style.display=v==='settings'?'none':'';if(v==='settings')renderSettings();window.scrollTo(0,0)}
+  $('fab').style.display=v==='settings'?'none':'';if(v==='settings')renderSettings();if(v==='chart')renderChart();window.scrollTo(0,0)}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 $('groupBy').onchange=$('sortBy').onchange=renderList;
 
