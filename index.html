@@ -319,7 +319,8 @@ function merge(r){
   for(const x of(r.expenses||[]))m.set(x.id,x);
   for(const x of S.expenses){const o=m.get(x.id);if(!o||stamp(x)>=stamp(o))m.set(x.id,x)}
   S.expenses=[...m.values()].filter(x=>!(del[x.id]>=stamp(x)));S.deleted=del;
-  if(r.settings&&(r.settings.updated||0)>(S.settings.updated||0)){const{manualRates,...st}=r.settings;S.settings={...blank().settings,...st};S.rates.manual=manualRates||{}}
+  const has=st=>st&&st.budget>0&&st.start&&st.end;
+  if(r.settings&&((has(r.settings)&&!has(S.settings))||(((r.settings.updated||0)>(S.settings.updated||0))&&(has(r.settings)||!has(S.settings))))){const{manualRates,...st}=r.settings;S.settings={...blank().settings,...st};S.rates.manual=manualRates||{}}
 }
 async function gh(method,body){
   const[o,rp]=(Y.repo||'').split('/');
